@@ -1,6 +1,6 @@
 # Aegis Note Locker — Product Requirements
 
-Status: implemented — 3.3.0 MVP released
+Status: implemented — 3.3.1 MVP released
 
 ## Product promise
 
