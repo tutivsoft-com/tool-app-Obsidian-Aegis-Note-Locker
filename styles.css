@@ -1,0 +1,4 @@
+.aegis-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+.aegis-error { color: var(--text-error); min-height: 1.5em; margin-top: 0.5rem; }
+.aegis-checkbox { display: flex; gap: 0.5rem; align-items: center; padding: 0.35rem 0; }
+.aegis-checkbox input { margin: 0; }
