@@ -4,6 +4,7 @@ import { AEGIS_KEY, displayValue, parseMarkdown, serializeMarkdown, topLevelProp
 import { DEFAULT_SETTINGS, AegisSettingTab } from "./settings";
 import { assertNoConflict, temporaryPath } from "./safety";
 import { ConfirmModal, PasswordModal, ProgressModal, PropertyPickerModal, notifyFailure } from "./ui";
+import { initializeBilling, reserveProtectionUse, syncBalance, type ProtectionCommitResult, type UseReservation } from "./billing";
 import type { AegisRecord, AegisSettings, UndoEntry, UndoRecord } from "./types";
 
 const LOCKED_NOTE_PLACEHOLDER = "> 🔒 Aegis: note body locked. Use “Aegis: Unlock current note” to view it.";
@@ -28,6 +29,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    await initializeBilling(this);
     if (this.settings.showStatusBar) this.statusBar = this.addStatusBarItem();
     this.addRibbonIcon("lock", "Aegis: Lock current note", () => void this.lockCurrentNote());
     this.addCommand({ id: "lock-current-note", name: "Aegis: Lock current note", callback: () => void this.lockCurrentNote() });
@@ -50,9 +52,24 @@ export default class AegisNoteLockerPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const saved = await this.loadData() as Partial<AegisSettings> | null;
     this.settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+    this.settings.constanceDeviceId = typeof this.settings.constanceDeviceId === "string" ? this.settings.constanceDeviceId : "";
+    this.settings.billingEmail = typeof this.settings.billingEmail === "string" ? this.settings.billingEmail : "";
+    this.settings.freeUsesDay = typeof this.settings.freeUsesDay === "string" ? this.settings.freeUsesDay : "";
+    this.settings.freeUsesUsed = Number.isFinite(this.settings.freeUsesUsed) ? Math.max(0, Math.floor(this.settings.freeUsesUsed)) : 0;
+    this.settings.purchasedUses = Number.isFinite(this.settings.purchasedUses) ? Math.max(0, Math.floor(this.settings.purchasedUses)) : 0;
+    this.settings.pendingProtectionCharges = Array.isArray(this.settings.pendingProtectionCharges) ? this.settings.pendingProtectionCharges.filter((id): id is string => typeof id === "string") : [];
   }
 
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
+
+  pollAfterCheckout(): void {
+    let attempts = 0;
+    const interval = this.registerInterval(window.setInterval(() => {
+      attempts += 1;
+      void syncBalance(this);
+      if (attempts >= 6) window.clearInterval(interval);
+    }, 15_000));
+  }
 
   updateStatusBar(): void {
     if (!this.settings.showStatusBar) { this.statusBar?.setText(""); return; }
@@ -115,8 +132,9 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const verified = await decryptText(envelope, password);
       if (verified !== parsed.body) throw new Error("Aegis verification failed before the file was changed.");
       const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-      await this.atomicChange(file, original, next);
-      new Notice("Aegis: note locked.");
+      const reservation = await reserveProtectionUse(this);
+      if (!reservation) return;
+      await this.applyProtectionChange(file, original, next, reservation, "Aegis: note locked.");
     } catch (error) { notifyFailure(error); }
   }
 
@@ -143,8 +161,9 @@ export default class AegisNoteLockerPlugin extends Plugin {
       }
       const nextRecord: AegisRecord = { mode: "properties", properties: protectedValues };
       const next = serializeMarkdown({ ...updatedFrontmatter, [AEGIS_KEY]: nextRecord }, parsed.body);
-      await this.atomicChange(file, original, next);
-      new Notice(`Aegis: protected ${chosen.length} propert${chosen.length === 1 ? "y" : "ies"}.`);
+      const reservation = await reserveProtectionUse(this);
+      if (!reservation) return;
+      await this.applyProtectionChange(file, original, next, reservation, `Aegis: protected ${chosen.length} propert${chosen.length === 1 ? "y" : "ies"}.`);
     } catch (error) { notifyFailure(error); }
   }
 
@@ -199,8 +218,11 @@ export default class AegisNoteLockerPlugin extends Plugin {
           const envelope = await encryptText(parsed.body, password);
           if (await decryptText(envelope, password) !== parsed.body) throw new Error("verification failed");
           const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-          await this.atomicChange(file, original, next, false);
-          entries.push({ path: file.path, original, resulting: next });
+          const reservation = await reserveProtectionUse(this);
+          if (!reservation) { progress.cancelled = true; break; }
+          if (await this.applyProtectionChange(file, original, next, reservation, "", false)) {
+            entries.push({ path: file.path, original, resulting: next });
+          }
         } catch (error) { new Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`); }
       }
       progress.update(entries.length, progress.cancelled ? "Cancelled" : "Complete");
@@ -258,6 +280,29 @@ export default class AegisNoteLockerPlugin extends Plugin {
       if (recordUndo) this.undoRecord = { createdAt: Date.now(), entries: [{ path: file.path, original: expected, resulting: next }] };
     } catch (error) {
       if (await this.app.vault.adapter.exists(tempPath)) await this.app.vault.adapter.remove(tempPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async applyProtectionChange(file: TFile, original: string, next: string, reservation: UseReservation, successNotice: string, recordUndo = true): Promise<boolean> {
+    try {
+      await this.atomicChange(file, original, next, recordUndo);
+      const result: ProtectionCommitResult = await reservation.commit();
+      if (result.kind === "insufficient") {
+        try {
+          await this.atomicChange(file, next, original, false);
+        } catch (rollbackError) {
+          throw new Error(`Aegis could not confirm the protection charge or restore the note safely: ${rollbackError instanceof Error ? rollbackError.message : "rollback failed"}`);
+        }
+        new Notice("Aegis: no purchased use was available; the note was left unchanged.");
+        return false;
+      }
+      if (successNotice) {
+        new Notice(result.kind === "pending" ? `${successNotice} Billing will retry the purchased-use charge.` : successNotice);
+      }
+      return true;
+    } catch (error) {
+      await reservation.rollback();
       throw error;
     }
   }

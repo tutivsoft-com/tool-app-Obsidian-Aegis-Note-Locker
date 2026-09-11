@@ -18,6 +18,12 @@ Use **Aegis: Export encrypted backup of current note** before a migration or a r
 
 The undo record is intentionally volatile: it is cleared on timeout, Lock Now, unload, and restart. Keep a normal vault backup as your durable recovery path.
 
+## Billing
+
+The first three successful note-body or frontmatter-properties protection operations on each local calendar day are free. Later successful protection operations use one purchased use each. Unlocking, viewing, encrypted export, and rollback are always free. Settings offers one-time packs of $1 for 100 uses and $10 for 1,000 uses using the live Aegis catalog price IDs.
+
+When a paid protection is needed, Aegis records a charge intent before changing the note and charges it only after the encrypted write has been verified. A failed write does not consume a purchased use. If a charge request is uncertain, Aegis keeps the note protected and retries the same event ID later, while preventing another paid protection from starting until that charge is reconciled.
+
 ## Sync, search, and mobile
 
 Obsidian Sync and Git can synchronize ciphertext, but conflicts must be resolved before Aegis will overwrite a file. Do not edit the encrypted marker by hand. Search, backlinks, embeds, properties, and plugins cannot inspect locked content; this is an intentional security tradeoff. Mobile can carry ciphertext, but unlocking depends on the same password and the mobile runtime's Web Crypto support. Always test a copy of a vault before adopting a sync workflow.

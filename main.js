@@ -27,7 +27,7 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 
 // publish/src/main.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // publish/src/crypto.ts
 var AEGIS_FORMAT_VERSION = 1;
@@ -149,17 +149,239 @@ function topLevelPropertyNames(frontmatter) {
 }
 
 // publish/src/settings.ts
+var import_obsidian3 = require("obsidian");
+
+// publish/src/billing.ts
 var import_obsidian2 = require("obsidian");
+
+// publish/src/usage.ts
+var DAILY_FREE_USES = 3;
+function localDayKey(date = /* @__PURE__ */ new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function resetDailyUsageIfNeeded(state, date = /* @__PURE__ */ new Date()) {
+  const day = localDayKey(date);
+  return state.freeUsesDay === day ? state : { freeUsesDay: day, freeUsesUsed: 0 };
+}
+function consumeFreeUse(state) {
+  if (state.freeUsesUsed >= DAILY_FREE_USES) return null;
+  return { ...state, freeUsesUsed: state.freeUsesUsed + 1 };
+}
+function refundFreeUse(state) {
+  return { ...state, freeUsesUsed: Math.max(0, state.freeUsesUsed - 1) };
+}
+function remainingFreeUses(state, date = /* @__PURE__ */ new Date()) {
+  const normalized = resetDailyUsageIfNeeded(state, date);
+  return Math.max(0, DAILY_FREE_USES - normalized.freeUsesUsed);
+}
+
+// publish/src/billing.ts
+var BASE_URL = "https://app.tutivsoft.com";
+var AEGIS_APP_ID = "aegis-note-locker";
+var AEGIS_PRICE_IDS = {
+  usd_001: "pri_01m28hmsg8q4n1p9q1ebhnema4",
+  usd_010: "pri_01m28hmtd16ghxd6fdqnsge4rc"
+};
+function generateEventId() {
+  const bytes = new Uint8Array(12);
+  window.crypto.getRandomValues(bytes);
+  return `evt_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+function ensureDeviceId(plugin) {
+  if (!plugin.settings.constanceDeviceId) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    plugin.settings.constanceDeviceId = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return plugin.settings.constanceDeviceId;
+}
+async function saveBillingState(plugin) {
+  try {
+    await plugin.saveSettings();
+    return true;
+  } catch (error) {
+    console.warn("Aegis: billing state save failed", error);
+    return false;
+  }
+}
+async function fetchBalance(deviceId) {
+  var _a, _b, _c;
+  const response = await (0, import_obsidian2.requestUrl)({
+    url: `${BASE_URL}/api/v1/public/browser/entitlements`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ app_id: AEGIS_APP_ID, external_customer_id: deviceId, machine_id: deviceId }),
+    throw: false
+  });
+  if (response.status < 200 || response.status >= 300) throw new Error(`Entitlement sync failed: HTTP ${response.status}`);
+  return Math.max(0, Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance) || 0);
+}
+async function syncBalance(plugin) {
+  const deviceId = ensureDeviceId(plugin);
+  try {
+    plugin.settings.purchasedUses = await fetchBalance(deviceId);
+    await saveBillingState(plugin);
+  } catch (error) {
+    console.warn("Aegis: Constance balance sync failed", error);
+  }
+}
+async function spendPurchasedUse(deviceId, eventId) {
+  var _a, _b, _c;
+  try {
+    const response = await (0, import_obsidian2.requestUrl)({
+      url: `${BASE_URL}/api/v1/public/browser/credits/spend`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app_id: AEGIS_APP_ID,
+        external_customer_id: deviceId,
+        machine_id: deviceId,
+        amount: 1,
+        event_id: eventId
+      }),
+      throw: false
+    });
+    if (response.status === 402 || response.status === 404) return { kind: "insufficient" };
+    if (response.status < 200 || response.status >= 300) return { kind: "error" };
+    const balance = Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance);
+    if (!Number.isFinite(balance)) return { kind: "error" };
+    return { kind: "ok", balance: Math.max(0, balance) };
+  } catch (error) {
+    console.warn("Aegis: Constance credit spend call failed", error);
+    return { kind: "error" };
+  }
+}
+async function retryPendingProtectionCharges(plugin) {
+  var _a;
+  const pending = [...(_a = plugin.settings.pendingProtectionCharges) != null ? _a : []];
+  if (!pending.length) return;
+  const deviceId = ensureDeviceId(plugin);
+  for (const eventId of pending) {
+    const result = await spendPurchasedUse(deviceId, eventId);
+    if (result.kind === "error") break;
+    if (result.kind === "insufficient") {
+      plugin.settings.purchasedUses = 0;
+      await saveBillingState(plugin);
+      break;
+    }
+    plugin.settings.purchasedUses = result.balance;
+    plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
+    if (!await saveBillingState(plugin)) break;
+  }
+}
+async function initializeBilling(plugin) {
+  var _a;
+  ensureDeviceId(plugin);
+  plugin.settings.pendingProtectionCharges = [...new Set(((_a = plugin.settings.pendingProtectionCharges) != null ? _a : []).filter((id) => typeof id === "string" && id.startsWith("evt_")))];
+  plugin.settings = { ...plugin.settings, ...resetDailyUsageIfNeeded(plugin.settings) };
+  await plugin.saveSettings();
+  void syncBalance(plugin).then(() => retryPendingProtectionCharges(plugin));
+}
+async function reserveProtectionUse(plugin) {
+  plugin.settings = { ...plugin.settings, ...resetDailyUsageIfNeeded(plugin.settings) };
+  const free = consumeFreeUse(plugin.settings);
+  if (free) {
+    const previous = plugin.settings.freeUsesUsed;
+    plugin.settings.freeUsesUsed = free.freeUsesUsed;
+    if (!await saveBillingState(plugin)) {
+      plugin.settings.freeUsesUsed = previous;
+      return null;
+    }
+    return {
+      source: "free",
+      commit: async () => ({ kind: "committed" }),
+      rollback: async () => {
+        if (plugin.settings.freeUsesDay === free.freeUsesDay) {
+          plugin.settings = { ...plugin.settings, ...refundFreeUse(plugin.settings) };
+          await saveBillingState(plugin);
+        }
+      }
+    };
+  }
+  await retryPendingProtectionCharges(plugin);
+  if (plugin.settings.pendingProtectionCharges.length > 0) {
+    new import_obsidian2.Notice("Aegis: a previous protection charge is still pending. Refresh your balance or complete the purchase first.");
+    return null;
+  }
+  if (plugin.settings.purchasedUses <= 0) await syncBalance(plugin);
+  if (plugin.settings.purchasedUses <= 0) {
+    new import_obsidian2.Notice("Aegis: no protection uses remain. Buy more in Aegis settings.");
+    return null;
+  }
+  const eventId = generateEventId();
+  plugin.settings.pendingProtectionCharges = [...plugin.settings.pendingProtectionCharges, eventId];
+  if (!await saveBillingState(plugin)) {
+    plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
+    return null;
+  }
+  let settled = false;
+  return {
+    source: "purchased",
+    commit: async () => {
+      if (settled) return { kind: "committed" };
+      const result = await spendPurchasedUse(ensureDeviceId(plugin), eventId);
+      if (result.kind === "error") return { kind: "pending" };
+      settled = true;
+      if (result.kind === "insufficient") {
+        plugin.settings.purchasedUses = 0;
+        plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
+        await saveBillingState(plugin);
+        return { kind: "insufficient" };
+      }
+      plugin.settings.purchasedUses = result.balance;
+      plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
+      if (!await saveBillingState(plugin)) {
+        plugin.settings.pendingProtectionCharges = [...plugin.settings.pendingProtectionCharges, eventId];
+        return { kind: "pending" };
+      }
+      return { kind: "committed" };
+    },
+    rollback: async () => {
+      if (settled) return;
+      plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
+      await saveBillingState(plugin);
+    }
+  };
+}
+function openCheckout(plugin, pack) {
+  const email = plugin.settings.billingEmail.trim();
+  const priceId = AEGIS_PRICE_IDS[pack];
+  if (!email || !email.includes("@")) {
+    new import_obsidian2.Notice("Enter a valid billing email in Aegis settings first.");
+    return;
+  }
+  if (!priceId) {
+    new import_obsidian2.Notice("Aegis billing is not available for this pack yet.");
+    return;
+  }
+  const params = new URLSearchParams({
+    app_id: AEGIS_APP_ID,
+    price_id: priceId,
+    email,
+    external_customer_id: ensureDeviceId(plugin)
+  });
+  window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank");
+  plugin.pollAfterCheckout();
+}
 
 // publish/src/types.ts
 var DEFAULT_SETTINGS = {
   sessionTimeoutMinutes: 15,
   backupFolder: ".aegis-backups",
-  showStatusBar: true
+  showStatusBar: true,
+  constanceDeviceId: "",
+  billingEmail: "",
+  freeUsesDay: "",
+  freeUsesUsed: 0,
+  purchasedUses: 0,
+  pendingProtectionCharges: []
 };
 
 // publish/src/settings.ts
-var AegisSettingTab = class extends import_obsidian2.PluginSettingTab {
+var AegisSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     __publicField(this, "plugin", plugin);
@@ -168,16 +390,40 @@ var AegisSettingTab = class extends import_obsidian2.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
-    containerEl.createEl("p", { text: "All encryption is local. Aegis never sends passwords or protected content to a server." });
-    new import_obsidian2.Setting(containerEl).setName("Session timeout").setDesc("Minutes of inactivity before the in-memory unlock password is cleared.").addSlider((slider) => slider.setLimits(1, 120, 1).setValue(this.plugin.settings.sessionTimeoutMinutes).setDynamicTooltip().onChange(async (value) => {
+    containerEl.createEl("p", { text: "All encryption is local. Optional billing sync sends only an install ID and billing email; passwords and protected content never leave the vault." });
+    new import_obsidian3.Setting(containerEl).setName("Billing").setHeading();
+    const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
+    const renderBalance = () => {
+      var _a, _b;
+      const pending = (_b = (_a = this.plugin.settings.pendingProtectionCharges) == null ? void 0 : _a.length) != null ? _b : 0;
+      balanceEl.setText(`Protection uses remaining: ${remainingFreeUses(this.plugin.settings)} free today + ${this.plugin.settings.purchasedUses.toLocaleString()} purchased${pending ? ` (${pending} charge pending)` : ""}`);
+    };
+    renderBalance();
+    new import_obsidian3.Setting(containerEl).setName("Billing email").setDesc("Used only for the TutivSoft Constance checkout receipt. It is never sent with note content.").addText((text) => text.setPlaceholder("you@example.com").setValue(this.plugin.settings.billingEmail).onChange(async (value) => {
+      this.plugin.settings.billingEmail = value.trim();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Buy protection uses").setDesc("One protection use covers one successful note-body or frontmatter-protection operation. Unlock, backup, rollback, and viewing are free.").addButton((button) => button.setButtonText("Buy $1 (100 uses)").onClick(() => openCheckout(this.plugin, "usd_001"))).addButton((button) => button.setButtonText("Buy $10 (1,000 uses)").setCta().onClick(() => openCheckout(this.plugin, "usd_010")));
+    new import_obsidian3.Setting(containerEl).setName("Refresh purchased balance").setDesc("Sync the purchased-use balance from Constance. Unlock, export, rollback, and viewing remain free.").addButton((button) => button.setButtonText("Refresh").onClick(async () => {
+      button.setDisabled(true);
+      try {
+        await syncBalance(this.plugin);
+        await retryPendingProtectionCharges(this.plugin);
+        renderBalance();
+      } finally {
+        button.setDisabled(false);
+      }
+    }));
+    void syncBalance(this.plugin).then(() => retryPendingProtectionCharges(this.plugin)).then(renderBalance);
+    new import_obsidian3.Setting(containerEl).setName("Session timeout").setDesc("Minutes of inactivity before the in-memory unlock password is cleared.").addSlider((slider) => slider.setLimits(1, 120, 1).setValue(this.plugin.settings.sessionTimeoutMinutes).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.sessionTimeoutMinutes = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("Encrypted backup folder").setDesc("Vault-relative folder used for user-requested encrypted exports.").addText((text) => text.setPlaceholder(".aegis-backups").setValue(this.plugin.settings.backupFolder).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Encrypted backup folder").setDesc("Vault-relative folder used for user-requested encrypted exports.").addText((text) => text.setPlaceholder(".aegis-backups").setValue(this.plugin.settings.backupFolder).onChange(async (value) => {
       this.plugin.settings.backupFolder = value.trim() || ".aegis-backups";
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("Show status bar").setDesc("Show the current note's locked or unlocked state in the status bar.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showStatusBar).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Show status bar").setDesc("Show the current note's locked or unlocked state in the status bar.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showStatusBar).onChange(async (value) => {
       this.plugin.settings.showStatusBar = value;
       await this.plugin.saveSettings();
       this.plugin.updateStatusBar();
@@ -196,13 +442,13 @@ function temporaryPath(path) {
 }
 
 // publish/src/ui.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 function safeError(error) {
   const message = error instanceof Error ? error.message : "The operation failed.";
   if (/password|decrypt|authentication|envelope|corrupt|tamper/i.test(message)) return "The password was incorrect or the encrypted record is damaged.";
   return message.replace(/[\r\n]+/g, " ").slice(0, 180);
 }
-var ConfirmModal = class extends import_obsidian3.Modal {
+var ConfirmModal = class extends import_obsidian4.Modal {
   constructor(app, title, message, confirmLabel = "Continue") {
     super(app);
     __publicField(this, "title", title);
@@ -241,7 +487,7 @@ var ConfirmModal = class extends import_obsidian3.Modal {
     this.close();
   }
 };
-var PasswordModal = class extends import_obsidian3.Modal {
+var PasswordModal = class extends import_obsidian4.Modal {
   constructor(app, title, confirmPassword) {
     super(app);
     __publicField(this, "title", title);
@@ -305,7 +551,7 @@ var PasswordModal = class extends import_obsidian3.Modal {
     this.close();
   }
 };
-var PropertyPickerModal = class extends import_obsidian3.Modal {
+var PropertyPickerModal = class extends import_obsidian4.Modal {
   constructor(app, properties) {
     super(app);
     __publicField(this, "properties", properties);
@@ -358,7 +604,7 @@ var PropertyPickerModal = class extends import_obsidian3.Modal {
     this.close();
   }
 };
-var ProgressModal = class extends import_obsidian3.Modal {
+var ProgressModal = class extends import_obsidian4.Modal {
   constructor(app, total) {
     super(app);
     __publicField(this, "total", total);
@@ -384,7 +630,7 @@ var ProgressModal = class extends import_obsidian3.Modal {
   }
 };
 function notifyFailure(error) {
-  new import_obsidian3.Notice(`Aegis: ${safeError(error)}`);
+  new import_obsidian4.Notice(`Aegis: ${safeError(error)}`);
 }
 
 // publish/src/main.ts
@@ -399,7 +645,7 @@ function asRecord(value) {
 function isMarkdown(file) {
   return file.extension.toLowerCase() === "md";
 }
-var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
+var AegisNoteLockerPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     __publicField(this, "settings", { ...DEFAULT_SETTINGS });
@@ -411,6 +657,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   }
   async onload() {
     await this.loadSettings();
+    await initializeBilling(this);
     if (this.settings.showStatusBar) this.statusBar = this.addStatusBarItem();
     this.addRibbonIcon("lock", "Aegis: Lock current note", () => void this.lockCurrentNote());
     this.addCommand({ id: "lock-current-note", name: "Aegis: Lock current note", callback: () => void this.lockCurrentNote() });
@@ -433,9 +680,23 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   async loadSettings() {
     const saved = await this.loadData();
     this.settings = { ...DEFAULT_SETTINGS, ...saved != null ? saved : {} };
+    this.settings.constanceDeviceId = typeof this.settings.constanceDeviceId === "string" ? this.settings.constanceDeviceId : "";
+    this.settings.billingEmail = typeof this.settings.billingEmail === "string" ? this.settings.billingEmail : "";
+    this.settings.freeUsesDay = typeof this.settings.freeUsesDay === "string" ? this.settings.freeUsesDay : "";
+    this.settings.freeUsesUsed = Number.isFinite(this.settings.freeUsesUsed) ? Math.max(0, Math.floor(this.settings.freeUsesUsed)) : 0;
+    this.settings.purchasedUses = Number.isFinite(this.settings.purchasedUses) ? Math.max(0, Math.floor(this.settings.purchasedUses)) : 0;
+    this.settings.pendingProtectionCharges = Array.isArray(this.settings.pendingProtectionCharges) ? this.settings.pendingProtectionCharges.filter((id) => typeof id === "string") : [];
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+  pollAfterCheckout() {
+    let attempts = 0;
+    const interval = this.registerInterval(window.setInterval(() => {
+      attempts += 1;
+      void syncBalance(this);
+      if (attempts >= 6) window.clearInterval(interval);
+    }, 15e3));
   }
   updateStatusBar() {
     var _a, _b;
@@ -458,7 +719,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
     });
   }
   addFileMenuItems(menu, file) {
-    if (!(file instanceof import_obsidian4.TFile) || !isMarkdown(file)) return;
+    if (!(file instanceof import_obsidian5.TFile) || !isMarkdown(file)) return;
     menu.addItem((item) => item.setTitle("Aegis: Lock note").setIcon("lock").onClick(() => void this.lockCurrentNote(file)));
     menu.addItem((item) => item.setTitle("Aegis: Unlock note").setIcon("unlock").onClick(() => void this.unlockCurrentNote(file)));
     menu.addItem((item) => item.setTitle("Aegis: Lock frontmatter properties").onClick(() => void this.lockProperties(file)));
@@ -498,7 +759,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   expireSessionIfNeeded() {
     if (this.sessionPassword && Date.now() >= this.sessionExpiresAt) {
       this.clearSession();
-      new import_obsidian4.Notice("Aegis session expired. Encrypted notes are locked.");
+      new import_obsidian5.Notice("Aegis session expired. Encrypted notes are locked.");
     }
   }
   lockNow() {
@@ -514,14 +775,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   }
   async lockCurrentNote(file = this.currentFile()) {
     if (!file || !isMarkdown(file)) {
-      new import_obsidian4.Notice("Aegis: open a Markdown note first.");
+      new import_obsidian5.Notice("Aegis: open a Markdown note first.");
       return;
     }
     try {
       const original = await this.app.vault.read(file);
       const parsed = parseMarkdown(original);
       if (asRecord(parsed.frontmatter[AEGIS_KEY])) {
-        new import_obsidian4.Notice("Aegis: this note already has protected content.");
+        new import_obsidian5.Notice("Aegis: this note already has protected content.");
         return;
       }
       const preview = await new ConfirmModal(this.app, "Review note lock", `The note body will become unreadable to Markdown search and third-party plugins. Its path and frontmatter will remain. A volatile undo record will be held for this session.`, "Continue to password").waitForResult();
@@ -532,8 +793,9 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       const verified = await decryptText(envelope, password);
       if (verified !== parsed.body) throw new Error("Aegis verification failed before the file was changed.");
       const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } }, LOCKED_NOTE_PLACEHOLDER);
-      await this.atomicChange(file, original, next);
-      new import_obsidian4.Notice("Aegis: note locked.");
+      const reservation = await reserveProtectionUse(this);
+      if (!reservation) return;
+      await this.applyProtectionChange(file, original, next, reservation, "Aegis: note locked.");
     } catch (error) {
       notifyFailure(error);
     }
@@ -541,14 +803,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   async lockProperties(file = this.currentFile()) {
     var _a, _b;
     if (!file || !isMarkdown(file)) {
-      new import_obsidian4.Notice("Aegis: open a Markdown note first.");
+      new import_obsidian5.Notice("Aegis: open a Markdown note first.");
       return;
     }
     try {
       const original = await this.app.vault.read(file);
       const parsed = parseMarkdown(original);
       if (((_a = asRecord(parsed.frontmatter[AEGIS_KEY])) == null ? void 0 : _a.mode) === "note") {
-        new import_obsidian4.Notice("Aegis: unlock the note body before protecting properties.");
+        new import_obsidian5.Notice("Aegis: unlock the note body before protecting properties.");
         return;
       }
       const existing = asRecord(parsed.frontmatter[AEGIS_KEY]);
@@ -557,7 +819,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
         return !((_a2 = existing == null ? void 0 : existing.properties) == null ? void 0 : _a2[key]);
       });
       if (!keys.length) {
-        new import_obsidian4.Notice("Aegis: this note has no top-level frontmatter properties.");
+        new import_obsidian5.Notice("Aegis: this note has no top-level frontmatter properties.");
         return;
       }
       const chosen = await new PropertyPickerModal(this.app, keys.map((key) => ({ key, selected: false }))).waitForResult();
@@ -574,15 +836,16 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       }
       const nextRecord = { mode: "properties", properties: protectedValues };
       const next = serializeMarkdown({ ...updatedFrontmatter, [AEGIS_KEY]: nextRecord }, parsed.body);
-      await this.atomicChange(file, original, next);
-      new import_obsidian4.Notice(`Aegis: protected ${chosen.length} propert${chosen.length === 1 ? "y" : "ies"}.`);
+      const reservation = await reserveProtectionUse(this);
+      if (!reservation) return;
+      await this.applyProtectionChange(file, original, next, reservation, `Aegis: protected ${chosen.length} propert${chosen.length === 1 ? "y" : "ies"}.`);
     } catch (error) {
       notifyFailure(error);
     }
   }
   async unlockCurrentNote(file = this.currentFile()) {
     if (!file || !isMarkdown(file)) {
-      new import_obsidian4.Notice("Aegis: open a Markdown note first.");
+      new import_obsidian5.Notice("Aegis: open a Markdown note first.");
       return;
     }
     try {
@@ -590,7 +853,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       const parsed = parseMarkdown(original);
       const record = asRecord(parsed.frontmatter[AEGIS_KEY]);
       if (!record) {
-        new import_obsidian4.Notice("Aegis: this note is not locked.");
+        new import_obsidian5.Notice("Aegis: this note is not locked.");
         return;
       }
       const preview = await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue to unlock").waitForResult();
@@ -607,7 +870,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       } else throw new Error("Unsupported Aegis record.");
       const next = serializeMarkdown(nextFrontmatter, nextBody);
       await this.atomicChange(file, original, next);
-      new import_obsidian4.Notice("Aegis: note unlocked.");
+      new import_obsidian5.Notice("Aegis: note unlocked.");
     } catch (error) {
       notifyFailure(error);
     }
@@ -622,7 +885,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
         if (!asRecord(parseMarkdown(content).frontmatter[AEGIS_KEY])) candidates.push(file);
       }
       if (!candidates.length) {
-        new import_obsidian4.Notice("Aegis: no unlocked Markdown notes found.");
+        new import_obsidian5.Notice("Aegis: no unlocked Markdown notes found.");
         return;
       }
       const approved = await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue to password").waitForResult();
@@ -645,17 +908,23 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
           const envelope = await encryptText(parsed.body, password);
           if (await decryptText(envelope, password) !== parsed.body) throw new Error("verification failed");
           const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } }, LOCKED_NOTE_PLACEHOLDER);
-          await this.atomicChange(file, original, next, false);
-          entries.push({ path: file.path, original, resulting: next });
+          const reservation = await reserveProtectionUse(this);
+          if (!reservation) {
+            progress.cancelled = true;
+            break;
+          }
+          if (await this.applyProtectionChange(file, original, next, reservation, "", false)) {
+            entries.push({ path: file.path, original, resulting: next });
+          }
         } catch (error) {
-          new import_obsidian4.Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`);
+          new import_obsidian5.Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`);
         }
       }
       progress.update(entries.length, progress.cancelled ? "Cancelled" : "Complete");
       progress.close();
       this.activeProgress = void 0;
       if (entries.length) this.undoRecord = { createdAt: Date.now(), entries };
-      new import_obsidian4.Notice(`Aegis: locked ${entries.length} note(s)${progress.cancelled ? " before cancellation" : ""}.`);
+      new import_obsidian5.Notice(`Aegis: locked ${entries.length} note(s)${progress.cancelled ? " before cancellation" : ""}.`);
     } catch (error) {
       (_a = this.activeProgress) == null ? void 0 : _a.close();
       this.activeProgress = void 0;
@@ -664,7 +933,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   }
   async exportEncryptedBackup(file = this.currentFile()) {
     if (!file || !isMarkdown(file)) {
-      new import_obsidian4.Notice("Aegis: open a Markdown note first.");
+      new import_obsidian5.Notice("Aegis: open a Markdown note first.");
       return;
     }
     try {
@@ -679,7 +948,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       const digest = (await sha256Hex(file.path)).slice(0, 16);
       const backupPath = `${folder}/${digest}-${Date.now()}.aegis`;
       await this.app.vault.adapter.write(backupPath, JSON.stringify({ v: 1, sourceHash: await sha256Hex(file.path), sourcePath: file.path, envelope }, null, 2));
-      new import_obsidian4.Notice(`Aegis: encrypted backup written to ${backupPath}.`);
+      new import_obsidian5.Notice(`Aegis: encrypted backup written to ${backupPath}.`);
     } catch (error) {
       notifyFailure(error);
     }
@@ -687,7 +956,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
   async rollbackLastOperation() {
     const record = this.undoRecord;
     if (!(record == null ? void 0 : record.entries.length)) {
-      new import_obsidian4.Notice("Aegis: no volatile undo record is available.");
+      new import_obsidian5.Notice("Aegis: no volatile undo record is available.");
       return;
     }
     const approved = await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult();
@@ -695,16 +964,16 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
     let restored = 0;
     for (const entry of record.entries) {
       const file = this.app.vault.getAbstractFileByPath(entry.path);
-      if (!(file instanceof import_obsidian4.TFile)) continue;
+      if (!(file instanceof import_obsidian5.TFile)) continue;
       try {
         await this.atomicChange(file, entry.resulting, entry.original, false);
         restored++;
       } catch (e) {
-        new import_obsidian4.Notice(`Aegis: rollback refused for ${entry.path} because it changed.`);
+        new import_obsidian5.Notice(`Aegis: rollback refused for ${entry.path} because it changed.`);
       }
     }
     this.undoRecord = void 0;
-    new import_obsidian4.Notice(`Aegis: rolled back ${restored} note(s).`);
+    new import_obsidian5.Notice(`Aegis: rolled back ${restored} note(s).`);
   }
   async atomicChange(file, expected, next, recordUndo = true) {
     const current = await this.app.vault.read(file);
@@ -720,6 +989,28 @@ var AegisNoteLockerPlugin = class extends import_obsidian4.Plugin {
       if (recordUndo) this.undoRecord = { createdAt: Date.now(), entries: [{ path: file.path, original: expected, resulting: next }] };
     } catch (error) {
       if (await this.app.vault.adapter.exists(tempPath)) await this.app.vault.adapter.remove(tempPath).catch(() => void 0);
+      throw error;
+    }
+  }
+  async applyProtectionChange(file, original, next, reservation, successNotice, recordUndo = true) {
+    try {
+      await this.atomicChange(file, original, next, recordUndo);
+      const result = await reservation.commit();
+      if (result.kind === "insufficient") {
+        try {
+          await this.atomicChange(file, next, original, false);
+        } catch (rollbackError) {
+          throw new Error(`Aegis could not confirm the protection charge or restore the note safely: ${rollbackError instanceof Error ? rollbackError.message : "rollback failed"}`);
+        }
+        new import_obsidian5.Notice("Aegis: no purchased use was available; the note was left unchanged.");
+        return false;
+      }
+      if (successNotice) {
+        new import_obsidian5.Notice(result.kind === "pending" ? `${successNotice} Billing will retry the purchased-use charge.` : successNotice);
+      }
+      return true;
+    } catch (error) {
+      await reservation.rollback();
       throw error;
     }
   }

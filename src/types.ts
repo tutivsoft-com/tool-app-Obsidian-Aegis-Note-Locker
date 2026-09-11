@@ -4,12 +4,24 @@ export interface AegisSettings {
   sessionTimeoutMinutes: number;
   backupFolder: string;
   showStatusBar: boolean;
+  constanceDeviceId: string;
+  billingEmail: string;
+  freeUsesDay: string;
+  freeUsesUsed: number;
+  purchasedUses: number;
+  pendingProtectionCharges: string[];
 }
 
 export const DEFAULT_SETTINGS: AegisSettings = {
   sessionTimeoutMinutes: 15,
   backupFolder: ".aegis-backups",
   showStatusBar: true,
+  constanceDeviceId: "",
+  billingEmail: "",
+  freeUsesDay: "",
+  freeUsesUsed: 0,
+  purchasedUses: 0,
+  pendingProtectionCharges: [],
 };
 
 export interface AegisRecord {

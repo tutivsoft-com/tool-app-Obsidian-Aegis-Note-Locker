@@ -1,6 +1,6 @@
 # Aegis Note Locker — Product Requirements
 
-Status: implemented — 3.3.1 MVP released
+Status: implemented — 3.3.4 billing/live-catalog release
 
 ## Product promise
 
@@ -63,6 +63,16 @@ Encryption is not a cosmetic lock. The project must document its threat model be
 ## AI decision
 
 AI is explicitly not part of the MVP and should not be connected to protected content. Sending sensitive plaintext to a cloud AI service would undermine the product’s privacy promise. No AI credits are needed. A future local-only assistant may be considered only after the security model and memory-handling behavior are independently reviewed.
+
+## Billing requirements
+
+31. Meter only successful note-body and frontmatter-properties protection operations. The first three successful protection operations per local calendar day are free; each later successful protection operation costs one purchased use.
+32. Keep unlock, view, encrypted export, and rollback free.
+33. Use the Torbert unsigned browser-relay contract with the unique app ID `aegis-note-locker`: balance sync through `POST /api/v1/public/browser/entitlements`, one-use spends through `POST /api/v1/public/browser/credits/spend`, and checkout through `GET /buy`.
+34. Identify an install with a random persisted `constanceDeviceId`, reused as `external_customer_id` and `machine_id`. Every spend uses a fresh `evt_` event ID; uncertain spends persist and retry the same event ID.
+35. Keep the live Paddle price IDs in the auditable Aegis billing map. The client must not contain Paddle credentials or call Paddle directly.
+36. Reserve free uses locally and refund the reservation if preparation or the vault write fails. Persist paid charge intent before writing, spend only after the verified vault write, and never assume an unavailable remote refund endpoint. On a confirmed insufficient response after a write, restore the original note before reporting failure.
+37. Billing requests may contain only billing identity, app identity, and credit event metadata. Passwords, keys, note paths, plaintext, ciphertext, and protected properties must never be sent.
 
 ## Useful post-MVP features
 
