@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.6 - 2026-09-12
+
+- Incremented and synchronized the canonical, package, manifest, and publish version surfaces after the billing rollout. No runtime behavior changed in this metadata release.
+
+
 ## 3.3.4 — 2026-09-11
 
 - Finalized the Aegis live-billing release with the configured Paddle catalog IDs and refreshed the mirrored publish/version surfaces.

@@ -1,28 +1,32 @@
 # Aegis Note Locker
 
-Version: `3.3.4`
+Version: `3.3.6`
 
-Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. Encryption requires no account, AI, or cloud key escrow. Optional billing uses TutivSoft Constance only for balance, checkout, and one-use charge events.
+Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses TutivSoft Constance only for balance, checkout, and one-use charge events.
 
-## Installation
+## What the MVP does
 
-Install Aegis from the Obsidian Community directory, or copy `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/aegis-note-locker/` in a vault and enable the plugin under **Settings → Community plugins**. For development, run `npm install` and `npm run build` from the source repository.
+- Locks and unlocks the current note from the command palette, ribbon, editor menu, or file menu.
+- Protects selected top-level frontmatter properties while leaving their names and other properties readable.
+- Uses AES-256-GCM with a unique random salt and nonce for each encrypted record and versioned PBKDF2-HMAC-SHA-256 key derivation.
+- Shows a review step before changes, verifies decryption before replacement, checks for sync conflicts, and stages writes through a temporary file.
+- Keeps a volatile undo record for the last operation and supports an encrypted backup export into the vault.
+- Provides Lock All with progress and cancellation, a configurable session timeout, and an explicit Lock Now command.
+- Includes three successful body/properties protection operations free per local calendar day, then one purchased use per successful protection operation. Unlock, view, export, and rollback are free.
 
-## Basic usage
+Install by placing `publish/main.js`, `publish/manifest.json`, and `publish/styles.css` in `.obsidian/plugins/aegis-note-locker/`, then enable Aegis in Obsidian. For development, run `npm install` and `npm run build`.
 
-Open a Markdown note and run **Aegis: Lock current note** from the command palette, ribbon, editor menu, or file menu. Review the preview, create and confirm a password, and wait for the success notice. Use **Aegis: Unlock current note** to restore protected content, **Aegis: Lock now (clear session)** when leaving the device, and **Aegis: Roll back last operation** when the in-memory undo record is still available.
+## Safe workflow
 
-To protect only selected frontmatter values, run **Aegis: Lock selected frontmatter properties**. Aegis previews the change, verifies decryption before replacement, refuses stale or conflicting writes, and keeps a visible locked placeholder in the note.
+Before locking anything, make a normal vault backup or use **Aegis: Export encrypted backup of current note**. Aegis shows a preview, asks for password confirmation when creating an encryption record, performs a test decrypt, and only then replaces the source. If a file changes between preview and commit, the operation is refused. **Aegis: Roll back last operation** is available while the plugin session still holds its in-memory undo record.
 
-## Billing
+Locked note bodies are replaced by a visible placeholder; encrypted values are ciphertext in the vault file. This means normal Markdown search, property indexing, backlinks, embeds, and third-party plugins cannot read protected content while locked. File paths and unprotected frontmatter remain available. Links that live inside a locked body are not available to Obsidian's graph until the note is unlocked; links kept in unprotected frontmatter remain visible where Obsidian supports them.
 
-The first three successful body/properties protection operations per local calendar day are free. After that, each successful protection operation uses one purchased credit. Unlock, view, encrypted export, and rollback remain free. The $1 pack contains 100 uses and the $10 pack contains 1,000 uses.
+## Security and privacy
 
-Aegis follows Torbert's unsigned Constance browser-relay pattern with app ID `aegis-note-locker`: balance sync, one-use credit spends, and a system-browser checkout handoff. The live Paddle price IDs are configured in the auditable billing map. Billing requests contain only the app ID, a random install ID, billing email for checkout, and event IDs; they never contain passwords, keys, note paths, plaintext, ciphertext, or protected properties. A charge intent is persisted before a paid write and charged only after the verified write; uncertain charges retry with the same event ID.
+Passwords and plaintext are never written to logs, clipboard, network requests, or plugin settings. Billing requests contain only the app ID, a random per-install device ID, billing email for checkout, and credit event IDs; they never contain note paths, encrypted envelopes, passwords, or protected content. The password is held only in memory for the configured session timeout and is cleared by Lock Now, timeout, unload, or error. The encrypted envelope stores only algorithm identifiers, KDF parameters, salt, nonce, and ciphertext with its GCM authentication tag.
 
-## Security and recovery
-
-Protected content is not searchable by normal Markdown search, property indexing, backlinks, embeds, or third-party plugins while locked. Passwords and plaintext are never written to logs, settings, clipboard, or network requests. Always keep a normal vault backup and read the [user guide](docs/USER_GUIDE.md), [threat model](docs/THREAT_MODEL.md), and [privacy notes](docs/PRIVACY.md) before protecting important notes.
+See [docs/THREAT_MODEL.md](publish/docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](publish/docs/USER_GUIDE.md), and [docs/PRIVACY.md](publish/docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
 
 ## Development
 
@@ -32,7 +36,7 @@ npm run check
 npm run build
 ```
 
-The public source is included in this repository for review. Aegis has no AI integration. The published source tree mirrors the development source tree.
+The source is under `src/`; the `publish/` directory is the public release zone and contains a mirrored source tree plus the generated runtime artifact. Aegis has no AI integration. The live Paddle price IDs are configured in the auditable billing map.
 
 ## License
 

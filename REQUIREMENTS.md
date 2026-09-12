@@ -1,6 +1,6 @@
 # Aegis Note Locker — Product Requirements
 
-Status: implemented — 3.3.4 billing/live-catalog release
+Status: implemented — 3.3.6 billing/live-catalog release
 
 ## Product promise
 
