@@ -1,11 +1,9 @@
 # Changelog
 
-## 3.3.7 — 2026-09-20
+## 3.3.7 - 2026-09-20
 
-- Synchronized the public documentation with the current `VERSION` and
-  `manifest.json` release metadata.
-- Corrected installation and documentation links to the root-level public
-  release files and documented the source-inclusive public-repository layout.
+- Synchronized the Aegis source and publish version surfaces and prepared the
+  next source-inclusive TutivSoft release.
 
 ## 3.3.6 - 2026-09-12
 

@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.7`
+Version: `3.3.6`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses TutivSoft Constance only for balance, checkout, and one-use charge events.
 
@@ -14,7 +14,7 @@ Aegis protects individual Markdown note bodies and selected top-level frontmatte
 - Provides Lock All with progress and cancellation, a configurable session timeout, and an explicit Lock Now command.
 - Includes three successful body/properties protection operations free per local calendar day, then one purchased use per successful protection operation. Unlock, view, export, and rollback are free.
 
-Install by placing the root-level `main.js`, `manifest.json`, and `styles.css` from this repository in `.obsidian/plugins/aegis-note-locker/`, then enable Aegis in Obsidian. This public release repository is a source-inclusive snapshot and does not contain the private source repository's npm build metadata; build changes from the mapped private source checkout before mirroring a release here.
+Install by placing `publish/main.js`, `publish/manifest.json`, and `publish/styles.css` in `.obsidian/plugins/aegis-note-locker/`, then enable Aegis in Obsidian. For development, run `npm install` and `npm run build`.
 
 ## Safe workflow
 
@@ -26,11 +26,17 @@ Locked note bodies are replaced by a visible placeholder; encrypted values are c
 
 Passwords and plaintext are never written to logs, clipboard, network requests, or plugin settings. Billing requests contain only the app ID, a random per-install device ID, billing email for checkout, and credit event IDs; they never contain note paths, encrypted envelopes, passwords, or protected content. The password is held only in memory for the configured session timeout and is cleared by Lock Now, timeout, unload, or error. The encrypted envelope stores only algorithm identifiers, KDF parameters, salt, nonce, and ciphertext with its GCM authentication tag.
 
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), and [docs/PRIVACY.md](docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
+See [docs/THREAT_MODEL.md](publish/docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](publish/docs/USER_GUIDE.md), and [docs/PRIVACY.md](publish/docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
 
 ## Development
 
-The source is under `src/`, with the generated Obsidian runtime artifact at the repository root as `main.js`. The root `manifest.json`, `styles.css`, `VERSION`, source tree, and documentation are the public release surface. Aegis has no AI integration. The live Paddle price IDs are configured in `src/billing.ts`; the plugin calls the TutivSoft Constance relay rather than Paddle directly.
+```text
+npm install
+npm run check
+npm run build
+```
+
+The source is under `src/`; the `publish/` directory is the public release zone and contains a mirrored source tree plus the generated runtime artifact. Aegis has no AI integration. The live Paddle price IDs are configured in the auditable billing map.
 
 ## License
 
