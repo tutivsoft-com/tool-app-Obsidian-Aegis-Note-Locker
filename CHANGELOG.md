@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.7 — 2026-09-20
+
+- Synchronized the public documentation with the current `VERSION` and
+  `manifest.json` release metadata.
+- Corrected installation and documentation links to the root-level public
+  release files and documented the source-inclusive public-repository layout.
+
 ## 3.3.6 - 2026-09-12
 
 - Incremented and synchronized the canonical, package, manifest, and publish version surfaces after the billing rollout. No runtime behavior changed in this metadata release.
