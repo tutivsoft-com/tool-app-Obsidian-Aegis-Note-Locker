@@ -2,6 +2,7 @@ import { Notice, requestUrl } from "obsidian";
 import type AegisNoteLockerPlugin from "./main";
 import { consumeFreeUse, refundFreeUse, resetDailyUsageIfNeeded } from "./usage";
 import { claimAccountFreeUsage } from "./constance-account";
+import { spendAccountCredits } from "./constance-account";
 
 const BASE_URL = "https://app.tutivsoft.com";
 export const AEGIS_APP_ID = "aegis-note-locker";
@@ -56,14 +57,14 @@ async function saveBillingState(plugin: AegisNoteLockerPlugin): Promise<boolean>
   }
 }
 
-async function fetchBalance(deviceId: string): Promise<number> {
+async function fetchBalance(plugin: AegisNoteLockerPlugin): Promise<number> {
   const response = await requestUrl({
-    url: `${BASE_URL}/api/v1/public/browser/entitlements`,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ app_id: AEGIS_APP_ID, external_customer_id: deviceId, machine_id: deviceId }),
+    url: `${BASE_URL}/api/v1/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
+    method: "GET",
+    headers: { Authorization: `Bearer ${plugin.settings.billingAccessToken}` },
     throw: false,
   });
+  if (response.status === 401 || response.status === 403 || response.status === 404) { plugin.settings.billingAccessToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); throw new Error("Billing session expired"); }
   if (response.status < 200 || response.status >= 300) throw new Error(`Entitlement sync failed: HTTP ${response.status}`);
   return Math.max(0, Number(response.json?.data?.credits?.balance) || 0);
 }
@@ -71,33 +72,20 @@ async function fetchBalance(deviceId: string): Promise<number> {
 export async function syncBalance(plugin: AegisNoteLockerPlugin): Promise<void> {
   const deviceId = ensureDeviceId(plugin);
   try {
-    plugin.settings.purchasedUses = await fetchBalance(deviceId);
+    if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) return;
+    plugin.settings.purchasedUses = await fetchBalance(plugin);
     await saveBillingState(plugin);
   } catch (error) {
     console.warn("Aegis: Constance balance sync failed", error);
   }
 }
 
-async function spendPurchasedUse(deviceId: string, eventId: string): Promise<SpendResult> {
+async function spendPurchasedUse(plugin: AegisNoteLockerPlugin, eventId: string): Promise<SpendResult> {
   try {
-    const response = await requestUrl({
-      url: `${BASE_URL}/api/v1/public/browser/credits/spend`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app_id: AEGIS_APP_ID,
-        external_customer_id: deviceId,
-        machine_id: deviceId,
-        amount: 1,
-        event_id: eventId,
-      }),
-      throw: false,
-    });
-    if (response.status === 402 || response.status === 404) return { kind: "insufficient" };
-    if (response.status < 200 || response.status >= 300) return { kind: "error" };
-    const balance = Number(response.json?.data?.credits?.balance);
-    if (!Number.isFinite(balance)) return { kind: "error" };
-    return { kind: "ok", balance: Math.max(0, balance) };
+    const result = await spendAccountCredits(plugin.settings, AEGIS_APP_ID, plugin.settings.constanceDeviceId, eventId, 1);
+    if (result.kind === "auth-required") { plugin.settings.billingAccessToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); return { kind: "error" }; }
+    if (result.kind === "insufficient" || result.kind === "error") return result;
+    return { kind: "ok", balance: Math.max(0, result.balance) };
   } catch (error) {
     console.warn("Aegis: Constance credit spend call failed", error);
     return { kind: "error" };
@@ -110,7 +98,7 @@ export async function retryPendingProtectionCharges(plugin: AegisNoteLockerPlugi
   if (!pending.length) return;
   const deviceId = ensureDeviceId(plugin);
   for (const eventId of pending) {
-    const result = await spendPurchasedUse(deviceId, eventId);
+    const result = await spendPurchasedUse(plugin, eventId);
     if (result.kind === "error") break;
     if (result.kind === "insufficient") {
       plugin.settings.purchasedUses = 0;
@@ -189,7 +177,7 @@ export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin): Promi
     source: "purchased",
     commit: async () => {
       if (settled) return { kind: "committed" };
-      const result = await spendPurchasedUse(ensureDeviceId(plugin), eventId);
+    const result = await spendPurchasedUse(plugin, eventId);
       if (result.kind === "error") return { kind: "pending" };
       settled = true;
       if (result.kind === "insufficient") {
