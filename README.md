@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.8`
+Version: `3.3.11`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses TutivSoft Constance only for balance, checkout, and one-use charge events.
 

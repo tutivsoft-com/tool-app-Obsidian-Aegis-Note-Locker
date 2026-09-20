@@ -2,7 +2,7 @@
 
 ## 3.3.8 - 2026-09-20
 
-- Prepared the next patch version across the public release metadata.
+- Prepared the next patch version across source, publish, and public metadata.
 - No runtime behavior changed in this documentation and version bump.
 
 ## 3.3.7 - 2026-09-20
