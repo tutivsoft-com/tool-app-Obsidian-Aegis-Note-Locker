@@ -250,6 +250,27 @@ async function claimAccountFreeUsage(state, appId, installationId, eventId, amou
     return { kind: "error" };
   }
 }
+async function spendAccountCredits(state, appId, installationId, eventId, amount) {
+  var _a, _b, _c;
+  if (!state.billingAccessToken || !state.billingAccountLinked) return { kind: "auth-required" };
+  try {
+    const response = await (0, import_obsidian2.requestUrl)({
+      url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/billing/credits/spend`,
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.billingAccessToken}` },
+      body: JSON.stringify({ app_id: appId, installation_id: installationId, event_id: eventId, amount }),
+      throw: false
+    });
+    if (response.status === 402) return { kind: "insufficient" };
+    if (response.status === 401 || response.status === 403 || response.status === 404) return { kind: "auth-required" };
+    if (response.status < 200 || response.status >= 300) return { kind: "error" };
+    const balance = Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance);
+    return Number.isFinite(balance) ? { kind: "ok", balance: Math.max(0, balance) } : { kind: "error" };
+  } catch (error) {
+    console.error("Constance authenticated credit spend failed", error);
+    return { kind: "error" };
+  }
+}
 function addBillingAccountSettings(containerEl, adapter) {
   let password = "";
   new import_obsidian2.Setting(containerEl).setName("Billing account email").setDesc("Used for sign-in, purchase restore, and checkout. Reinstalling no longer creates a new free allowance.").addText((text) => text.setPlaceholder("you@example.com").setValue(adapter.state.billingEmail).onChange(async (value) => {
@@ -326,48 +347,44 @@ async function saveBillingState(plugin) {
     return false;
   }
 }
-async function fetchBalance(deviceId) {
+async function fetchBalance(plugin) {
   var _a, _b, _c;
   const response = await (0, import_obsidian3.requestUrl)({
-    url: `${BASE_URL}/api/v1/public/browser/entitlements`,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ app_id: AEGIS_APP_ID, external_customer_id: deviceId, machine_id: deviceId }),
+    url: `${BASE_URL}/api/v1/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
+    method: "GET",
+    headers: { Authorization: `Bearer ${plugin.settings.billingAccessToken}` },
     throw: false
   });
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
+    plugin.settings.billingAccessToken = "";
+    plugin.settings.billingAccountLinked = false;
+    await saveBillingState(plugin);
+    throw new Error("Billing session expired");
+  }
   if (response.status < 200 || response.status >= 300) throw new Error(`Entitlement sync failed: HTTP ${response.status}`);
   return Math.max(0, Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance) || 0);
 }
 async function syncBalance(plugin) {
   const deviceId = ensureDeviceId(plugin);
   try {
-    plugin.settings.purchasedUses = await fetchBalance(deviceId);
+    if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) return;
+    plugin.settings.purchasedUses = await fetchBalance(plugin);
     await saveBillingState(plugin);
   } catch (error) {
     console.warn("Aegis: Constance balance sync failed", error);
   }
 }
-async function spendPurchasedUse(deviceId, eventId) {
-  var _a, _b, _c;
+async function spendPurchasedUse(plugin, eventId) {
   try {
-    const response = await (0, import_obsidian3.requestUrl)({
-      url: `${BASE_URL}/api/v1/public/browser/credits/spend`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app_id: AEGIS_APP_ID,
-        external_customer_id: deviceId,
-        machine_id: deviceId,
-        amount: 1,
-        event_id: eventId
-      }),
-      throw: false
-    });
-    if (response.status === 402 || response.status === 404) return { kind: "insufficient" };
-    if (response.status < 200 || response.status >= 300) return { kind: "error" };
-    const balance = Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance);
-    if (!Number.isFinite(balance)) return { kind: "error" };
-    return { kind: "ok", balance: Math.max(0, balance) };
+    const result = await spendAccountCredits(plugin.settings, AEGIS_APP_ID, plugin.settings.constanceDeviceId, eventId, 1);
+    if (result.kind === "auth-required") {
+      plugin.settings.billingAccessToken = "";
+      plugin.settings.billingAccountLinked = false;
+      await saveBillingState(plugin);
+      return { kind: "error" };
+    }
+    if (result.kind === "insufficient" || result.kind === "error") return result;
+    return { kind: "ok", balance: Math.max(0, result.balance) };
   } catch (error) {
     console.warn("Aegis: Constance credit spend call failed", error);
     return { kind: "error" };
@@ -379,7 +396,7 @@ async function retryPendingProtectionCharges(plugin) {
   if (!pending.length) return;
   const deviceId = ensureDeviceId(plugin);
   for (const eventId of pending) {
-    const result = await spendPurchasedUse(deviceId, eventId);
+    const result = await spendPurchasedUse(plugin, eventId);
     if (result.kind === "error") break;
     if (result.kind === "insufficient") {
       plugin.settings.purchasedUses = 0;
@@ -451,7 +468,7 @@ async function reserveProtectionUse(plugin) {
     source: "purchased",
     commit: async () => {
       if (settled) return { kind: "committed" };
-      const result = await spendPurchasedUse(ensureDeviceId(plugin), eventId);
+      const result = await spendPurchasedUse(plugin, eventId);
       if (result.kind === "error") return { kind: "pending" };
       settled = true;
       if (result.kind === "insufficient") {
