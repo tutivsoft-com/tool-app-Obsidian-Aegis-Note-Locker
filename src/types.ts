@@ -6,6 +6,8 @@ export interface AegisSettings {
   showStatusBar: boolean;
   constanceDeviceId: string;
   billingEmail: string;
+  billingAccessToken: string;
+  billingAccountLinked: boolean;
   freeUsesDay: string;
   freeUsesUsed: number;
   purchasedUses: number;
@@ -18,6 +20,8 @@ export const DEFAULT_SETTINGS: AegisSettings = {
   showStatusBar: true,
   constanceDeviceId: "",
   billingEmail: "",
+  billingAccessToken: "",
+  billingAccountLinked: false,
   freeUsesDay: "",
   freeUsesUsed: 0,
   purchasedUses: 0,

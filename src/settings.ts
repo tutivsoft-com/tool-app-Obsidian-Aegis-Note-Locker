@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type AegisNoteLockerPlugin from "./main";
 import { openCheckout, retryPendingProtectionCharges, syncBalance } from "./billing";
 import { remainingFreeUses } from "./usage";
+import { addBillingAccountSettings } from "./constance-account";
 export { DEFAULT_SETTINGS } from "./types";
 
 export class AegisSettingTab extends PluginSettingTab {
@@ -19,13 +20,7 @@ export class AegisSettingTab extends PluginSettingTab {
       balanceEl.setText(`Protection uses remaining: ${remainingFreeUses(this.plugin.settings)} free today + ${this.plugin.settings.purchasedUses.toLocaleString()} purchased${pending ? ` (${pending} charge pending)` : ""}`);
     };
     renderBalance();
-    new Setting(containerEl)
-      .setName("Billing email")
-      .setDesc("Used only for the TutivSoft Constance checkout receipt. It is never sent with note content.")
-      .addText((text) => text.setPlaceholder("you@example.com").setValue(this.plugin.settings.billingEmail).onChange(async (value) => {
-        this.plugin.settings.billingEmail = value.trim();
-        await this.plugin.saveSettings();
-      }));
+    addBillingAccountSettings(containerEl, { state: this.plugin.settings, appId: "aegis-note-locker", installationId: this.plugin.settings.constanceDeviceId, appVersion: this.plugin.manifest.version, persist: () => this.plugin.saveSettings(), syncBalance: () => syncBalance(this.plugin), refresh: () => this.display() });
     new Setting(containerEl)
       .setName("Buy protection uses")
       .setDesc("One protection use covers one successful note-body or frontmatter-protection operation. Unlock, backup, rollback, and viewing are free.")

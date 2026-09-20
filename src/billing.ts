@@ -1,6 +1,7 @@
 import { Notice, requestUrl } from "obsidian";
 import type AegisNoteLockerPlugin from "./main";
 import { consumeFreeUse, refundFreeUse, resetDailyUsageIfNeeded } from "./usage";
+import { claimAccountFreeUsage } from "./constance-account";
 
 const BASE_URL = "https://app.tutivsoft.com";
 export const AEGIS_APP_ID = "aegis-note-locker";
@@ -113,6 +114,9 @@ export async function retryPendingProtectionCharges(plugin: AegisNoteLockerPlugi
     if (result.kind === "error") break;
     if (result.kind === "insufficient") {
       plugin.settings.purchasedUses = 0;
+      // The server has authoritatively rejected this event. Keeping it in
+      // the pending queue would block every future paid operation forever.
+      plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
       await saveBillingState(plugin);
       break;
     }
@@ -137,11 +141,21 @@ export async function initializeBilling(plugin: AegisNoteLockerPlugin): Promise<
  * remote credit.
  */
 export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin): Promise<UseReservation | null> {
+  if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) {
+    new Notice("Aegis: sign in or create a billing account in plugin settings before protecting a note.");
+    return null;
+  }
   plugin.settings = { ...plugin.settings, ...resetDailyUsageIfNeeded(plugin.settings) };
   const free = consumeFreeUse(plugin.settings);
   if (free) {
+    const accountFree = await claimAccountFreeUsage(plugin.settings, AEGIS_APP_ID, ensureDeviceId(plugin), `free_${generateEventId()}`, 1);
+    if (accountFree.kind !== "ok") {
+      if (accountFree.kind === "auth-required") { plugin.settings.billingAccessToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); }
+      new Notice(accountFree.kind === "insufficient" ? "Aegis: today's account free allowance is exhausted." : "Aegis: the account allowance could not be verified.");
+      return null;
+    }
     const previous = plugin.settings.freeUsesUsed;
-    plugin.settings.freeUsesUsed = free.freeUsesUsed;
+    plugin.settings.freeUsesUsed = Math.max(0, 3 - accountFree.remaining);
     if (!(await saveBillingState(plugin))) {
       plugin.settings.freeUsesUsed = previous;
       return null;
@@ -149,12 +163,7 @@ export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin): Promi
     return {
       source: "free",
       commit: async () => ({ kind: "committed" }),
-      rollback: async () => {
-        if (plugin.settings.freeUsesDay === free.freeUsesDay) {
-          plugin.settings = { ...plugin.settings, ...refundFreeUse(plugin.settings) };
-          await saveBillingState(plugin);
-        }
-      },
+      rollback: async () => undefined,
     };
   }
 
@@ -208,6 +217,7 @@ export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin): Promi
 }
 
 export function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPackKey): void {
+  if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) { new Notice("Sign in or create a billing account in Aegis settings before buying uses."); return; }
   const email = plugin.settings.billingEmail.trim();
   const priceId = AEGIS_PRICE_IDS[pack];
   if (!email || !email.includes("@")) {

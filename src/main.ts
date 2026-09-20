@@ -6,6 +6,7 @@ import { assertNoConflict, temporaryPath } from "./safety";
 import { ConfirmModal, PasswordModal, ProgressModal, PropertyPickerModal, notifyFailure } from "./ui";
 import { initializeBilling, reserveProtectionUse, syncBalance, type ProtectionCommitResult, type UseReservation } from "./billing";
 import type { AegisRecord, AegisSettings, UndoEntry, UndoRecord } from "./types";
+import { PluginSupport } from "./plugin-support";
 
 const LOCKED_NOTE_PLACEHOLDER = "> 🔒 Aegis: note body locked. Use “Aegis: Unlock current note” to view it.";
 const LOCKED_PROPERTY_PLACEHOLDER = "🔒 Protected by Aegis";
@@ -21,6 +22,7 @@ function isMarkdown(file: TFile): boolean { return file.extension.toLowerCase() 
 
 export default class AegisNoteLockerPlugin extends Plugin {
   settings: AegisSettings = { ...DEFAULT_SETTINGS };
+  support!: PluginSupport;
   private sessionPassword: string | undefined;
   private sessionExpiresAt = 0;
   private undoRecord: UndoRecord | undefined;
@@ -28,6 +30,8 @@ export default class AegisNoteLockerPlugin extends Plugin {
   private activeProgress?: ProgressModal;
 
   async onload(): Promise<void> {
+    this.support = new PluginSupport(this, { name: "Aegis Note Locker", summary: "Encrypt note bodies or selected frontmatter properties with review and rollback safeguards.", quickStart: ["Open a note.", "Run Lock current note or Lock frontmatter properties.", "Review the scope and enter a password."], commands: ["Lock current note", "Unlock current note", "Clear password session"], troubleshooting: ["Use Copy debug log before reporting a problem.", "Keep the password safe; Aegis cannot recover it."] });
+    this.support.start();
     await this.loadSettings();
     await initializeBilling(this);
     if (this.settings.showStatusBar) this.statusBar = this.addStatusBarItem();
@@ -54,6 +58,8 @@ export default class AegisNoteLockerPlugin extends Plugin {
     this.settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
     this.settings.constanceDeviceId = typeof this.settings.constanceDeviceId === "string" ? this.settings.constanceDeviceId : "";
     this.settings.billingEmail = typeof this.settings.billingEmail === "string" ? this.settings.billingEmail : "";
+    this.settings.billingAccessToken = typeof this.settings.billingAccessToken === "string" ? this.settings.billingAccessToken : "";
+    this.settings.billingAccountLinked = this.settings.billingAccountLinked === true && Boolean(this.settings.billingAccessToken);
     this.settings.freeUsesDay = typeof this.settings.freeUsesDay === "string" ? this.settings.freeUsesDay : "";
     this.settings.freeUsesUsed = Number.isFinite(this.settings.freeUsesUsed) ? Math.max(0, Math.floor(this.settings.freeUsesUsed)) : 0;
     this.settings.purchasedUses = Number.isFinite(this.settings.purchasedUses) ? Math.max(0, Math.floor(this.settings.purchasedUses)) : 0;
