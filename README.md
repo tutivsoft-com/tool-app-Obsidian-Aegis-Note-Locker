@@ -1,8 +1,8 @@
 # Aegis Note Locker
 
-Version: `3.3.12`
+Version: `3.3.13`
 
-Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses TutivSoft Constance only for balance, checkout, and one-use charge events.
+Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
 ## What the MVP does
 
@@ -24,7 +24,7 @@ Locked note bodies are replaced by a visible placeholder; encrypted values are c
 
 ## Security and privacy
 
-Passwords and plaintext are never written to logs, clipboard, network requests, or plugin settings. Billing requests contain only the app ID, a random per-install device ID, billing email for checkout, and credit event IDs; they never contain note paths, encrypted envelopes, passwords, or protected content. The password is held only in memory for the configured session timeout and is cleared by Lock Now, timeout, unload, or error. The encrypted envelope stores only algorithm identifiers, KDF parameters, salt, nonce, and ciphertext with its GCM authentication tag.
+Passwords and plaintext are never written to logs, clipboard, network requests, or plugin settings. Billing requests contain only the app ID, a random per-install installation ID, billing account/session data, checkout metadata, and credit event IDs; they never contain note paths, encrypted envelopes, passwords, or protected content. The account session uses rotating access/refresh tokens stored in Obsidian plugin data; the password is held only for the sign-in request. Authenticated checkout resolves the pack server-side and retains the price-ID `/buy` URL only as a legacy fallback. Payment fulfillment remains webhook-authoritative and the plugin refreshes entitlements by polling.
 
 See [docs/THREAT_MODEL.md](publish/docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](publish/docs/USER_GUIDE.md), and [docs/PRIVACY.md](publish/docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
 

@@ -7,11 +7,14 @@ export interface AegisSettings {
   constanceDeviceId: string;
   billingEmail: string;
   billingAccessToken: string;
+  billingRefreshToken: string;
   billingAccountLinked: boolean;
   freeUsesDay: string;
   freeUsesUsed: number;
   purchasedUses: number;
   pendingProtectionCharges: string[];
+  pendingCheckoutKey: string;
+  pendingCheckoutPack: string;
 }
 
 export const DEFAULT_SETTINGS: AegisSettings = {
@@ -21,11 +24,14 @@ export const DEFAULT_SETTINGS: AegisSettings = {
   constanceDeviceId: "",
   billingEmail: "",
   billingAccessToken: "",
+  billingRefreshToken: "",
   billingAccountLinked: false,
   freeUsesDay: "",
   freeUsesUsed: 0,
   purchasedUses: 0,
   pendingProtectionCharges: [],
+  pendingCheckoutKey: "",
+  pendingCheckoutPack: "",
 };
 
 export interface AegisRecord {

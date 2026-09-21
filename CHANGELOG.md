@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.13 - 2026-09-21
+
+- Added rotating Constance access/refresh-session handling and authenticated server-owned checkout with persisted idempotency; retained `/buy` only as the legacy fallback.
+
 ## 3.3.12 - 2026-09-21
 
 - Incremented release metadata without rebuilding the plugin.

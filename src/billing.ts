@@ -1,8 +1,7 @@
-import { Notice, requestUrl } from "obsidian";
+import { Notice } from "obsidian";
 import type AegisNoteLockerPlugin from "./main";
 import { consumeFreeUse, refundFreeUse, resetDailyUsageIfNeeded } from "./usage";
-import { claimAccountFreeUsage } from "./constance-account";
-import { spendAccountCredits } from "./constance-account";
+import { claimAccountFreeUsage, requestAuthenticatedBilling, spendAccountCredits } from "./constance-account";
 
 const BASE_URL = "https://app.tutivsoft.com";
 export const AEGIS_APP_ID = "aegis-note-locker";
@@ -14,6 +13,13 @@ export type AegisPackKey = "usd_001" | "usd_010";
 export const AEGIS_PRICE_IDS: Record<AegisPackKey, string> = {
   usd_001: "pri_01m28hmsg8q4n1p9q1ebhnema4",
   usd_010: "pri_01m28hmtd16ghxd6fdqnsge4rc",
+};
+
+// Server-authoritative catalog codes for the authenticated checkout route.
+// Price IDs remain only for the legacy /buy fallback.
+export const AEGIS_PLAN_CODES: Record<AegisPackKey, string> = {
+  usd_001: "one_time",
+  usd_010: "standard",
 };
 
 export type SpendResult =
@@ -58,13 +64,11 @@ async function saveBillingState(plugin: AegisNoteLockerPlugin): Promise<boolean>
 }
 
 async function fetchBalance(plugin: AegisNoteLockerPlugin): Promise<number> {
-  const response = await requestUrl({
+  const response = await requestAuthenticatedBilling(plugin.settings, {
     url: `${BASE_URL}/api/v1/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
     method: "GET",
-    headers: { Authorization: `Bearer ${plugin.settings.billingAccessToken}` },
-    throw: false,
   });
-  if (response.status === 401 || response.status === 403 || response.status === 404) { plugin.settings.billingAccessToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); throw new Error("Billing session expired"); }
+  if (response.status === 401 || response.status === 403 || response.status === 404) { plugin.settings.billingAccessToken = ""; plugin.settings.billingRefreshToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); throw new Error("Billing session expired"); }
   if (response.status < 200 || response.status >= 300) throw new Error(`Entitlement sync failed: HTTP ${response.status}`);
   return Math.max(0, Number(response.json?.data?.credits?.balance) || 0);
 }
@@ -83,7 +87,7 @@ export async function syncBalance(plugin: AegisNoteLockerPlugin): Promise<void> 
 async function spendPurchasedUse(plugin: AegisNoteLockerPlugin, eventId: string): Promise<SpendResult> {
   try {
     const result = await spendAccountCredits(plugin.settings, AEGIS_APP_ID, plugin.settings.constanceDeviceId, eventId, 1);
-    if (result.kind === "auth-required") { plugin.settings.billingAccessToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); return { kind: "error" }; }
+    if (result.kind === "auth-required") { plugin.settings.billingAccessToken = ""; plugin.settings.billingRefreshToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); return { kind: "error" }; }
     if (result.kind === "insufficient" || result.kind === "error") return result;
     return { kind: "ok", balance: Math.max(0, result.balance) };
   } catch (error) {
@@ -204,7 +208,7 @@ export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin): Promi
   };
 }
 
-export function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPackKey): void {
+export async function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPackKey): Promise<void> {
   if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) { new Notice("Sign in or create a billing account in Aegis settings before buying uses."); return; }
   const email = plugin.settings.billingEmail.trim();
   const priceId = AEGIS_PRICE_IDS[pack];
@@ -216,12 +220,77 @@ export function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPackKey):
     new Notice("Aegis billing is not available for this pack yet.");
     return;
   }
-  const params = new URLSearchParams({
-    app_id: AEGIS_APP_ID,
-    price_id: priceId,
-    email,
-    external_customer_id: ensureDeviceId(plugin),
-  });
+  const installationId = ensureDeviceId(plugin);
+  const planCode = AEGIS_PLAN_CODES[pack];
+  if (plugin.settings.pendingCheckoutKey && plugin.settings.pendingCheckoutPack !== pack) {
+    new Notice("Aegis: another checkout is still pending. Refresh the balance before starting a new purchase.");
+    return;
+  }
+  const previousKey = plugin.settings.pendingCheckoutKey;
+  const previousPack = plugin.settings.pendingCheckoutPack;
+  const idempotencyKey = previousKey || `checkout_${generateEventId()}`;
+  plugin.settings.pendingCheckoutKey = idempotencyKey;
+  plugin.settings.pendingCheckoutPack = pack;
+  if (!(await saveBillingState(plugin))) {
+    plugin.settings.pendingCheckoutKey = previousKey;
+    plugin.settings.pendingCheckoutPack = previousPack;
+    new Notice("Aegis could not save the checkout retry state.");
+    return;
+  }
+
+  let response;
+  try {
+    response = await requestAuthenticatedBilling(plugin.settings, {
+      url: `${BASE_URL}/api/v1/billing/checkout`,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ app_id: AEGIS_APP_ID, plan_code: planCode, installation_id: installationId, quantity: 1, coupon_code: null }),
+    });
+  } catch {
+    new Notice("Aegis checkout could not be reached. Retry with the same checkout request.");
+    return;
+  }
+  if (response.status === 401 || response.status === 403) {
+    plugin.settings.billingAccessToken = "";
+    plugin.settings.billingRefreshToken = "";
+    plugin.settings.billingAccountLinked = false;
+    await saveBillingState(plugin);
+    new Notice("Aegis billing session expired. Sign in again before buying uses.");
+    return;
+  }
+  if (response.status >= 200 && response.status < 300) {
+    const checkoutUrl = String(response.json?.data?.checkout_url || "");
+    if (checkoutUrl) {
+      window.open(checkoutUrl, "_blank");
+      plugin.settings.pendingCheckoutKey = "";
+      plugin.settings.pendingCheckoutPack = "";
+      await saveBillingState(plugin);
+      plugin.pollAfterCheckout();
+      return;
+    }
+    new Notice("Aegis checkout was created but did not return a checkout URL. Refresh the balance and retry if needed.");
+    return;
+  }
+  if (response.status >= 500 || response.status === 0) {
+    new Notice("Aegis checkout is temporarily unavailable. Retry with the same checkout request.");
+    return;
+  }
+  if (response.status === 409) {
+    new Notice("Aegis checkout could not be retried safely. Refresh the balance and try again.");
+    return;
+  }
+
+  if (response.status !== 400 && response.status !== 404 && response.status !== 405) {
+    new Notice(`Aegis checkout failed (HTTP ${response.status}).`);
+    return;
+  }
+
+  // Legacy fallback: /buy cannot carry a billing return URL, so fulfillment
+  // still comes only from webhook processing and the polling refresh above.
+  const params = new URLSearchParams({ app_id: AEGIS_APP_ID, price_id: priceId, email, external_customer_id: installationId });
   window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank");
+  plugin.settings.pendingCheckoutKey = "";
+  plugin.settings.pendingCheckoutPack = "";
+  await saveBillingState(plugin);
   plugin.pollAfterCheckout();
 }

@@ -12,7 +12,7 @@ export class AegisSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
-    containerEl.createEl("p", { text: "All encryption is local. Optional billing sync sends only an install ID and billing email; passwords and protected content never leave the vault." });
+    containerEl.createEl("p", { text: "All encryption is local. Optional billing uses an account session and install ID; passwords and protected content never leave the vault." });
     new Setting(containerEl).setName("Billing").setHeading();
     const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
     const renderBalance = (): void => {
@@ -24,8 +24,8 @@ export class AegisSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Buy protection uses")
       .setDesc("One protection use covers one successful note-body or frontmatter-protection operation. Unlock, backup, rollback, and viewing are free.")
-      .addButton((button) => button.setButtonText("Buy $1 (100 uses)").onClick(() => openCheckout(this.plugin, "usd_001")))
-      .addButton((button) => button.setButtonText("Buy $10 (1,000 uses)").setCta().onClick(() => openCheckout(this.plugin, "usd_010")));
+      .addButton((button) => button.setButtonText("Buy $1 (100 uses)").onClick(() => { void openCheckout(this.plugin, "usd_001"); }))
+      .addButton((button) => button.setButtonText("Buy $10 (1,000 uses)").setCta().onClick(() => { void openCheckout(this.plugin, "usd_010"); }));
     new Setting(containerEl)
       .setName("Refresh purchased balance")
       .setDesc("Sync the purchased-use balance from Constance. Unlock, export, rollback, and viewing remain free.")

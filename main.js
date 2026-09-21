@@ -183,7 +183,7 @@ function errorDetail(response, fallback) {
   return String(((_a = response.json) == null ? void 0 : _a.detail) || ((_b = response.json) == null ? void 0 : _b.message) || response.text || fallback);
 }
 async function authenticate(mode, email, password, installationId) {
-  var _a;
+  var _a, _b, _c;
   const body = mode === "register" ? { email, password, external_customer_id: installationId } : { email, password };
   const response = await (0, import_obsidian2.requestUrl)({
     url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/${mode}`,
@@ -195,9 +195,65 @@ async function authenticate(mode, email, password, installationId) {
   if (response.status < 200 || response.status >= 300) {
     throw new Error(errorDetail(response, `Billing ${mode} failed (HTTP ${response.status})`));
   }
-  const token = String(((_a = response.json) == null ? void 0 : _a.access_token) || "");
-  if (!token) throw new Error("Constance did not return an account token.");
-  return token;
+  const accessToken = String(((_a = response.json) == null ? void 0 : _a.access_token) || "");
+  if (!accessToken && ((_b = response.json) == null ? void 0 : _b.verification_required)) {
+    throw new Error("Account created. Verify the billing email, then sign in.");
+  }
+  const refreshToken = String(((_c = response.json) == null ? void 0 : _c.refresh_token) || "");
+  if (!accessToken || !refreshToken) throw new Error("Constance did not return a complete account session.");
+  return { accessToken, refreshToken };
+}
+function clearBillingSession(state) {
+  state.billingAccessToken = "";
+  state.billingRefreshToken = "";
+  state.billingAccountLinked = false;
+}
+async function refreshBillingSession(state) {
+  var _a, _b;
+  if (!state.billingRefreshToken) return false;
+  let response;
+  try {
+    response = await (0, import_obsidian2.requestUrl)({
+      url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/refresh`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: state.billingRefreshToken }),
+      throw: false
+    });
+  } catch (e) {
+    return false;
+  }
+  if (response.status < 200 || response.status >= 300) {
+    if (response.status === 401 || response.status === 403) clearBillingSession(state);
+    return false;
+  }
+  const accessToken = String(((_a = response.json) == null ? void 0 : _a.access_token) || "");
+  const refreshToken = String(((_b = response.json) == null ? void 0 : _b.refresh_token) || "");
+  if (!accessToken || !refreshToken) {
+    clearBillingSession(state);
+    return false;
+  }
+  state.billingAccessToken = accessToken;
+  state.billingRefreshToken = refreshToken;
+  state.billingAccountLinked = true;
+  return true;
+}
+async function requestAuthenticatedBilling(state, options) {
+  const send = () => (0, import_obsidian2.requestUrl)({
+    ...options,
+    headers: {
+      ...options.headers || {},
+      ...state.billingAccessToken ? { Authorization: `Bearer ${state.billingAccessToken}` } : {}
+    },
+    throw: false
+  });
+  let response = await send();
+  if (response.status === 401 && state.billingRefreshToken) {
+    const hadRefreshToken = Boolean(state.billingRefreshToken);
+    if (await refreshBillingSession(state)) response = await send();
+    else if (hadRefreshToken && state.billingRefreshToken) return { ...response, status: 503 };
+  }
+  return response;
 }
 async function linkInstallation(adapter, token) {
   const response = await (0, import_obsidian2.requestUrl)({
@@ -222,10 +278,11 @@ async function signInBillingAccount(adapter, password, mode) {
   if (!email || !email.includes("@")) throw new Error("Enter a valid billing email.");
   if (password.length < 8) throw new Error("Password must contain at least 8 characters.");
   if (!adapter.installationId) throw new Error("The plugin installation ID is not ready.");
-  const token = await authenticate(mode, email, password, adapter.installationId);
-  await linkInstallation(adapter, token);
+  const tokens = await authenticate(mode, email, password, adapter.installationId);
+  await linkInstallation(adapter, tokens.accessToken);
   adapter.state.billingEmail = email;
-  adapter.state.billingAccessToken = token;
+  adapter.state.billingAccessToken = tokens.accessToken;
+  adapter.state.billingRefreshToken = tokens.refreshToken;
   adapter.state.billingAccountLinked = true;
   await adapter.persist();
   await adapter.syncBalance();
@@ -234,15 +291,17 @@ async function claimAccountFreeUsage(state, appId, installationId, eventId, amou
   var _a, _b;
   if (!state.billingAccessToken || !state.billingAccountLinked) return { kind: "auth-required" };
   try {
-    const response = await (0, import_obsidian2.requestUrl)({
+    const response = await requestAuthenticatedBilling(state, {
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/billing/free-usage/claim`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.billingAccessToken}` },
-      body: JSON.stringify({ app_id: appId, installation_id: installationId, event_id: eventId, amount }),
-      throw: false
+      body: JSON.stringify({ app_id: appId, installation_id: installationId, event_id: eventId, amount })
     });
     if (response.status === 402) return { kind: "insufficient" };
-    if (response.status === 401 || response.status === 403 || response.status === 404) return { kind: "auth-required" };
+    if (response.status === 401 || response.status === 403 || response.status === 404) {
+      clearBillingSession(state);
+      return { kind: "auth-required" };
+    }
     if (response.status < 200 || response.status >= 300) return { kind: "error" };
     return { kind: "ok", remaining: Math.max(0, Number((_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.remaining) || 0) };
   } catch (error) {
@@ -254,15 +313,17 @@ async function spendAccountCredits(state, appId, installationId, eventId, amount
   var _a, _b, _c;
   if (!state.billingAccessToken || !state.billingAccountLinked) return { kind: "auth-required" };
   try {
-    const response = await (0, import_obsidian2.requestUrl)({
+    const response = await requestAuthenticatedBilling(state, {
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/billing/credits/spend`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.billingAccessToken}` },
-      body: JSON.stringify({ app_id: appId, installation_id: installationId, event_id: eventId, amount }),
-      throw: false
+      body: JSON.stringify({ app_id: appId, installation_id: installationId, event_id: eventId, amount })
     });
     if (response.status === 402) return { kind: "insufficient" };
-    if (response.status === 401 || response.status === 403 || response.status === 404) return { kind: "auth-required" };
+    if (response.status === 401 || response.status === 403 || response.status === 404) {
+      clearBillingSession(state);
+      return { kind: "auth-required" };
+    }
     if (response.status < 200 || response.status >= 300) return { kind: "error" };
     const balance = Number((_c = (_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.credits) == null ? void 0 : _c.balance);
     return Number.isFinite(balance) ? { kind: "ok", balance: Math.max(0, balance) } : { kind: "error" };
@@ -284,7 +345,7 @@ function addBillingAccountSettings(containerEl, adapter) {
     });
   });
   const status = adapter.state.billingAccountLinked ? "Signed in and linked" : "Not signed in";
-  new import_obsidian2.Setting(containerEl).setName("Billing account").setDesc(`${status}. The saved bearer session can restore purchases; your password is not stored.`).addButton((button) => button.setButtonText("Sign in").onClick(async () => {
+  new import_obsidian2.Setting(containerEl).setName("Billing account").setDesc(`${status}. A rotating billing session restores purchases; your password is not stored.`).addButton((button) => button.setButtonText("Sign in").onClick(async () => {
     var _a;
     button.setDisabled(true);
     try {
@@ -325,6 +386,10 @@ var AEGIS_PRICE_IDS = {
   usd_001: "pri_01m28hmsg8q4n1p9q1ebhnema4",
   usd_010: "pri_01m28hmtd16ghxd6fdqnsge4rc"
 };
+var AEGIS_PLAN_CODES = {
+  usd_001: "one_time",
+  usd_010: "standard"
+};
 function generateEventId() {
   const bytes = new Uint8Array(12);
   window.crypto.getRandomValues(bytes);
@@ -349,14 +414,13 @@ async function saveBillingState(plugin) {
 }
 async function fetchBalance(plugin) {
   var _a, _b, _c;
-  const response = await (0, import_obsidian3.requestUrl)({
+  const response = await requestAuthenticatedBilling(plugin.settings, {
     url: `${BASE_URL}/api/v1/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
-    method: "GET",
-    headers: { Authorization: `Bearer ${plugin.settings.billingAccessToken}` },
-    throw: false
+    method: "GET"
   });
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     plugin.settings.billingAccessToken = "";
+    plugin.settings.billingRefreshToken = "";
     plugin.settings.billingAccountLinked = false;
     await saveBillingState(plugin);
     throw new Error("Billing session expired");
@@ -379,6 +443,7 @@ async function spendPurchasedUse(plugin, eventId) {
     const result = await spendAccountCredits(plugin.settings, AEGIS_APP_ID, plugin.settings.constanceDeviceId, eventId, 1);
     if (result.kind === "auth-required") {
       plugin.settings.billingAccessToken = "";
+      plugin.settings.billingRefreshToken = "";
       plugin.settings.billingAccountLinked = false;
       await saveBillingState(plugin);
       return { kind: "error" };
@@ -492,7 +557,8 @@ async function reserveProtectionUse(plugin) {
     }
   };
 }
-function openCheckout(plugin, pack) {
+async function openCheckout(plugin, pack) {
+  var _a, _b;
   if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) {
     new import_obsidian3.Notice("Sign in or create a billing account in Aegis settings before buying uses.");
     return;
@@ -507,13 +573,73 @@ function openCheckout(plugin, pack) {
     new import_obsidian3.Notice("Aegis billing is not available for this pack yet.");
     return;
   }
-  const params = new URLSearchParams({
-    app_id: AEGIS_APP_ID,
-    price_id: priceId,
-    email,
-    external_customer_id: ensureDeviceId(plugin)
-  });
+  const installationId = ensureDeviceId(plugin);
+  const planCode = AEGIS_PLAN_CODES[pack];
+  if (plugin.settings.pendingCheckoutKey && plugin.settings.pendingCheckoutPack !== pack) {
+    new import_obsidian3.Notice("Aegis: another checkout is still pending. Refresh the balance before starting a new purchase.");
+    return;
+  }
+  const previousKey = plugin.settings.pendingCheckoutKey;
+  const previousPack = plugin.settings.pendingCheckoutPack;
+  const idempotencyKey = previousKey || `checkout_${generateEventId()}`;
+  plugin.settings.pendingCheckoutKey = idempotencyKey;
+  plugin.settings.pendingCheckoutPack = pack;
+  if (!await saveBillingState(plugin)) {
+    plugin.settings.pendingCheckoutKey = previousKey;
+    plugin.settings.pendingCheckoutPack = previousPack;
+    new import_obsidian3.Notice("Aegis could not save the checkout retry state.");
+    return;
+  }
+  let response;
+  try {
+    response = await requestAuthenticatedBilling(plugin.settings, {
+      url: `${BASE_URL}/api/v1/billing/checkout`,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ app_id: AEGIS_APP_ID, plan_code: planCode, installation_id: installationId, quantity: 1, coupon_code: null })
+    });
+  } catch (e) {
+    new import_obsidian3.Notice("Aegis checkout could not be reached. Retry with the same checkout request.");
+    return;
+  }
+  if (response.status === 401 || response.status === 403) {
+    plugin.settings.billingAccessToken = "";
+    plugin.settings.billingRefreshToken = "";
+    plugin.settings.billingAccountLinked = false;
+    await saveBillingState(plugin);
+    new import_obsidian3.Notice("Aegis billing session expired. Sign in again before buying uses.");
+    return;
+  }
+  if (response.status >= 200 && response.status < 300) {
+    const checkoutUrl = String(((_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.checkout_url) || "");
+    if (checkoutUrl) {
+      window.open(checkoutUrl, "_blank");
+      plugin.settings.pendingCheckoutKey = "";
+      plugin.settings.pendingCheckoutPack = "";
+      await saveBillingState(plugin);
+      plugin.pollAfterCheckout();
+      return;
+    }
+    new import_obsidian3.Notice("Aegis checkout was created but did not return a checkout URL. Refresh the balance and retry if needed.");
+    return;
+  }
+  if (response.status >= 500 || response.status === 0) {
+    new import_obsidian3.Notice("Aegis checkout is temporarily unavailable. Retry with the same checkout request.");
+    return;
+  }
+  if (response.status === 409) {
+    new import_obsidian3.Notice("Aegis checkout could not be retried safely. Refresh the balance and try again.");
+    return;
+  }
+  if (response.status !== 400 && response.status !== 404 && response.status !== 405) {
+    new import_obsidian3.Notice(`Aegis checkout failed (HTTP ${response.status}).`);
+    return;
+  }
+  const params = new URLSearchParams({ app_id: AEGIS_APP_ID, price_id: priceId, email, external_customer_id: installationId });
   window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank");
+  plugin.settings.pendingCheckoutKey = "";
+  plugin.settings.pendingCheckoutPack = "";
+  await saveBillingState(plugin);
   plugin.pollAfterCheckout();
 }
 
@@ -525,11 +651,14 @@ var DEFAULT_SETTINGS = {
   constanceDeviceId: "",
   billingEmail: "",
   billingAccessToken: "",
+  billingRefreshToken: "",
   billingAccountLinked: false,
   freeUsesDay: "",
   freeUsesUsed: 0,
   purchasedUses: 0,
-  pendingProtectionCharges: []
+  pendingProtectionCharges: [],
+  pendingCheckoutKey: "",
+  pendingCheckoutPack: ""
 };
 
 // publish/src/settings.ts
@@ -542,7 +671,7 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
-    containerEl.createEl("p", { text: "All encryption is local. Optional billing sync sends only an install ID and billing email; passwords and protected content never leave the vault." });
+    containerEl.createEl("p", { text: "All encryption is local. Optional billing uses an account session and install ID; passwords and protected content never leave the vault." });
     new import_obsidian4.Setting(containerEl).setName("Billing").setHeading();
     const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
     const renderBalance = () => {
@@ -552,7 +681,11 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
     };
     renderBalance();
     addBillingAccountSettings(containerEl, { state: this.plugin.settings, appId: "aegis-note-locker", installationId: this.plugin.settings.constanceDeviceId, appVersion: this.plugin.manifest.version, persist: () => this.plugin.saveSettings(), syncBalance: () => syncBalance(this.plugin), refresh: () => this.display() });
-    new import_obsidian4.Setting(containerEl).setName("Buy protection uses").setDesc("One protection use covers one successful note-body or frontmatter-protection operation. Unlock, backup, rollback, and viewing are free.").addButton((button) => button.setButtonText("Buy $1 (100 uses)").onClick(() => openCheckout(this.plugin, "usd_001"))).addButton((button) => button.setButtonText("Buy $10 (1,000 uses)").setCta().onClick(() => openCheckout(this.plugin, "usd_010")));
+    new import_obsidian4.Setting(containerEl).setName("Buy protection uses").setDesc("One protection use covers one successful note-body or frontmatter-protection operation. Unlock, backup, rollback, and viewing are free.").addButton((button) => button.setButtonText("Buy $1 (100 uses)").onClick(() => {
+      void openCheckout(this.plugin, "usd_001");
+    })).addButton((button) => button.setButtonText("Buy $10 (1,000 uses)").setCta().onClick(() => {
+      void openCheckout(this.plugin, "usd_010");
+    }));
     new import_obsidian4.Setting(containerEl).setName("Refresh purchased balance").setDesc("Sync the purchased-use balance from Constance. Unlock, export, rollback, and viewing remain free.").addButton((button) => button.setButtonText("Refresh").onClick(async () => {
       button.setDisabled(true);
       try {
@@ -942,11 +1075,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
     this.settings.constanceDeviceId = typeof this.settings.constanceDeviceId === "string" ? this.settings.constanceDeviceId : "";
     this.settings.billingEmail = typeof this.settings.billingEmail === "string" ? this.settings.billingEmail : "";
     this.settings.billingAccessToken = typeof this.settings.billingAccessToken === "string" ? this.settings.billingAccessToken : "";
+    this.settings.billingRefreshToken = typeof this.settings.billingRefreshToken === "string" ? this.settings.billingRefreshToken : "";
     this.settings.billingAccountLinked = this.settings.billingAccountLinked === true && Boolean(this.settings.billingAccessToken);
     this.settings.freeUsesDay = typeof this.settings.freeUsesDay === "string" ? this.settings.freeUsesDay : "";
     this.settings.freeUsesUsed = Number.isFinite(this.settings.freeUsesUsed) ? Math.max(0, Math.floor(this.settings.freeUsesUsed)) : 0;
     this.settings.purchasedUses = Number.isFinite(this.settings.purchasedUses) ? Math.max(0, Math.floor(this.settings.purchasedUses)) : 0;
     this.settings.pendingProtectionCharges = Array.isArray(this.settings.pendingProtectionCharges) ? this.settings.pendingProtectionCharges.filter((id) => typeof id === "string") : [];
+    this.settings.pendingCheckoutKey = typeof this.settings.pendingCheckoutKey === "string" ? this.settings.pendingCheckoutKey : "";
+    this.settings.pendingCheckoutPack = typeof this.settings.pendingCheckoutPack === "string" ? this.settings.pendingCheckoutPack : "";
   }
   async saveSettings() {
     await this.saveData(this.settings);
