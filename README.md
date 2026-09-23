@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.14`
+Version: `3.3.15`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
@@ -18,7 +18,7 @@ Install by placing `publish/main.js`, `publish/manifest.json`, and `publish/styl
 
 ## Safe workflow
 
-Before locking anything, make a normal vault backup or use **Aegis: Export encrypted backup of current note**. Aegis shows a preview, asks for password confirmation when creating an encryption record, performs a test decrypt, and only then replaces the source. If a file changes between preview and commit, the operation is refused. **Aegis: Roll back last operation** is available while the plugin session still holds its in-memory undo record.
+Before locking anything, make a normal vault backup or use **Aegis Note Locker: Export encrypted backup of current note**. Aegis shows a preview, asks for password confirmation when creating an encryption record, performs a test decrypt, and only then replaces the source. If a file changes between preview and commit, the operation is refused. **Aegis Note Locker: Roll back last operation** is available while the plugin session still holds its in-memory undo record.
 
 Locked note bodies are replaced by a visible placeholder; encrypted values are ciphertext in the vault file. This means normal Markdown search, property indexing, backlinks, embeds, and third-party plugins cannot read protected content while locked. File paths and unprotected frontmatter remain available. Links that live inside a locked body are not available to Obsidian's graph until the note is unlocked; links kept in unprotected frontmatter remain visible where Obsidian supports them.
 
