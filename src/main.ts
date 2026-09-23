@@ -266,13 +266,14 @@ export default class AegisNoteLockerPlugin extends Plugin {
     const approved = await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult();
     if (!approved) return;
     let restored = 0;
+    const remaining: UndoEntry[] = [];
     for (const entry of record.entries) {
       const file = this.app.vault.getAbstractFileByPath(entry.path);
-      if (!(file instanceof TFile)) continue;
-      try { await this.atomicChange(file, entry.resulting, entry.original, false); restored++; } catch { new Notice(`Aegis: rollback refused for ${entry.path} because it changed.`); }
+      if (!(file instanceof TFile)) { remaining.push(entry); continue; }
+      try { await this.atomicChange(file, entry.resulting, entry.original, false); restored++; } catch { remaining.push(entry); new Notice(`Aegis: rollback refused for ${entry.path} because it changed.`); }
     }
-    this.undoRecord = undefined;
-    new Notice(`Aegis: rolled back ${restored} note(s).`);
+    this.undoRecord = remaining.length ? { ...record, entries: remaining } : undefined;
+    new Notice(`Aegis: rolled back ${restored} note(s)${remaining.length ? `; ${remaining.length} still available to retry` : ""}.`);
   }
 
   private async atomicChange(file: TFile, expected: string, next: string, recordUndo = true): Promise<void> {

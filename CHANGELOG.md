@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.14 - 2026-09-23
+
+- Keep notes that could not be restored in the rollback list so the operation can be retried after resolving a conflict.
+- Explain when a browser blocks checkout and retain the checkout retry state.
+
 ## 3.3.13 - 2026-09-21
 
 - Added rotating Constance access/refresh-session handling and authenticated server-owned checkout with persisted idempotency; retained `/buy` only as the legacy fallback.

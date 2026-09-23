@@ -261,7 +261,10 @@ export async function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPac
   if (response.status >= 200 && response.status < 300) {
     const checkoutUrl = String(response.json?.data?.checkout_url || "");
     if (checkoutUrl) {
-      window.open(checkoutUrl, "_blank");
+      if (!window.open(checkoutUrl, "_blank")) {
+        new Notice("Aegis checkout was created, but your browser blocked the pop-up. Allow pop-ups and retry the same purchase.");
+        return;
+      }
       plugin.settings.pendingCheckoutKey = "";
       plugin.settings.pendingCheckoutPack = "";
       await saveBillingState(plugin);
@@ -288,7 +291,10 @@ export async function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPac
   // Legacy fallback: /buy cannot carry a billing return URL, so fulfillment
   // still comes only from webhook processing and the polling refresh above.
   const params = new URLSearchParams({ app_id: AEGIS_APP_ID, price_id: priceId, email, external_customer_id: installationId });
-  window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank");
+  if (!window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank")) {
+    new Notice("Aegis checkout was blocked. Allow pop-ups and retry the same purchase.");
+    return;
+  }
   plugin.settings.pendingCheckoutKey = "";
   plugin.settings.pendingCheckoutPack = "";
   await saveBillingState(plugin);

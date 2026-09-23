@@ -613,7 +613,10 @@ async function openCheckout(plugin, pack) {
   if (response.status >= 200 && response.status < 300) {
     const checkoutUrl = String(((_b = (_a = response.json) == null ? void 0 : _a.data) == null ? void 0 : _b.checkout_url) || "");
     if (checkoutUrl) {
-      window.open(checkoutUrl, "_blank");
+      if (!window.open(checkoutUrl, "_blank")) {
+        new import_obsidian3.Notice("Aegis checkout was created, but your browser blocked the pop-up. Allow pop-ups and retry the same purchase.");
+        return;
+      }
       plugin.settings.pendingCheckoutKey = "";
       plugin.settings.pendingCheckoutPack = "";
       await saveBillingState(plugin);
@@ -636,7 +639,10 @@ async function openCheckout(plugin, pack) {
     return;
   }
   const params = new URLSearchParams({ app_id: AEGIS_APP_ID, price_id: priceId, email, external_customer_id: installationId });
-  window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank");
+  if (!window.open(`${BASE_URL}/buy?${params.toString()}`, "_blank")) {
+    new import_obsidian3.Notice("Aegis checkout was blocked. Allow pop-ups and retry the same purchase.");
+    return;
+  }
   plugin.settings.pendingCheckoutKey = "";
   plugin.settings.pendingCheckoutPack = "";
   await saveBillingState(plugin);
@@ -1359,18 +1365,23 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
     const approved = await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult();
     if (!approved) return;
     let restored = 0;
+    const remaining = [];
     for (const entry of record.entries) {
       const file = this.app.vault.getAbstractFileByPath(entry.path);
-      if (!(file instanceof import_obsidian7.TFile)) continue;
+      if (!(file instanceof import_obsidian7.TFile)) {
+        remaining.push(entry);
+        continue;
+      }
       try {
         await this.atomicChange(file, entry.resulting, entry.original, false);
         restored++;
       } catch (e) {
+        remaining.push(entry);
         new import_obsidian7.Notice(`Aegis: rollback refused for ${entry.path} because it changed.`);
       }
     }
-    this.undoRecord = void 0;
-    new import_obsidian7.Notice(`Aegis: rolled back ${restored} note(s).`);
+    this.undoRecord = remaining.length ? { ...record, entries: remaining } : void 0;
+    new import_obsidian7.Notice(`Aegis: rolled back ${restored} note(s)${remaining.length ? `; ${remaining.length} still available to retry` : ""}.`);
   }
   async atomicChange(file, expected, next, recordUndo = true) {
     const current = await this.app.vault.read(file);
