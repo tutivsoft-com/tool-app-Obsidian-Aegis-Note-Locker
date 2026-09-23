@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.15`
+Version: `3.3.16`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
@@ -24,9 +24,11 @@ Locked note bodies are replaced by a visible placeholder; encrypted values are c
 
 ## Security and privacy
 
-Passwords and plaintext are never written to logs, clipboard, network requests, or plugin settings. Billing requests contain only the app ID, a random per-install installation ID, billing account/session data, checkout metadata, and credit event IDs; they never contain note paths, encrypted envelopes, passwords, or protected content. The account session uses rotating access/refresh tokens stored in Obsidian plugin data; the password is held only for the sign-in request. Authenticated checkout resolves the pack server-side and retains the price-ID `/buy` URL only as a legacy fallback. Payment fulfillment remains webhook-authoritative and the plugin refreshes entitlements by polling.
+The note-encryption password and plaintext are never written to logs, clipboard, network requests, or plugin settings. A separate billing account password is submitted only to authenticate with Constance; it is not retained as a password. Rotating billing session tokens are stored in Obsidian plugin data. Billing requests contain account/app identifiers, checkout metadata, and credit event IDs, never note paths, encrypted envelopes, encryption passwords, or protected content. Payment fulfillment remains webhook-authoritative and the plugin refreshes entitlements by polling.
 
-See [docs/THREAT_MODEL.md](publish/docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](publish/docs/USER_GUIDE.md), and [docs/PRIVACY.md](publish/docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), and [docs/PRIVACY.md](docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
+
+See [Features](FEATURES.md), [Requirements](REQUIREMENTS.md), [Software Architecture](SOFTWARE_ARCHITECTURE.md), and [Marketing](MARKETING.md) for the product and implementation overview.
 
 ## Development
 

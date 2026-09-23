@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.16 - 2026-09-24
+
+- Added product feature, architecture, and marketing documentation.
+- Refreshed requirements and clarified encryption-password versus billing-account handling.
+
 ## 3.3.15 - 2026-09-23
 
 - Simplified Obsidian command palette labels by removing repeated plugin-name prefixes.

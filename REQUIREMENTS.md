@@ -1,6 +1,6 @@
 # Aegis Note Locker — Product Requirements
 
-Status: implemented — 3.3.13 authenticated billing integration release
+Status: implemented — 3.3.16 documentation and release metadata
 
 ## Product promise
 
@@ -12,7 +12,7 @@ Encryption is not a cosmetic lock. The project must document its threat model be
 
 ## Product principles
 
-- No password, plaintext key, or decrypted content is sent to a server.
+- The note-encryption password, derived keys, and decrypted content are never sent to a server. The separate billing account password is used only for Constance sign-in.
 - Never claim that encrypted content remains searchable when the index cannot read it.
 - Make lock and unlock state obvious.
 - Prefer authenticated failure over best-effort decryption.
@@ -99,4 +99,4 @@ AI is explicitly not part of the MVP and should not be connected to protected co
 - Unprotected note structure and graph links remain intact where the configured mode permits.
 - Encryption and decryption are previewed, recoverable, and atomic.
 - Passwords and plaintext never appear in logs or network requests.
-- The MVP is fully useful without AI, an account, or an internet connection.
+- The free daily protection allowance and all encryption operations work without AI or cloud key escrow; account and network access are needed for paid credit and checkout operations.
