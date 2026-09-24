@@ -1,4 +1,4 @@
-﻿# Top 10 Benefits of Aegis Note Locker
+# Top 10 Benefits of Aegis Note Locker
 
 1. **Local Authenticated Encryption (AES-256-GCM)**
    - **Benefit:** Encrypts selected Markdown content locally with authenticated encryption.
@@ -39,3 +39,9 @@
 10. **Free Unlock and Recovery Operations**
     - **Benefit:** Unlocking, viewing, encrypted export, and rollback do not consume protection uses.
     - **Example:** Use a protection credit only when successfully locking a note body or frontmatter values.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

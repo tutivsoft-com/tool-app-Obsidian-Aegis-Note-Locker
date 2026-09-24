@@ -27,3 +27,9 @@ When a paid protection is needed, Aegis records a charge intent before changing 
 ## Sync, search, and mobile
 
 Obsidian Sync and Git can synchronize ciphertext, but conflicts must be resolved before Aegis will overwrite a file. Do not edit the encrypted marker by hand. Search, backlinks, embeds, properties, and plugins cannot inspect locked content; this is an intentional security tradeoff. Mobile can carry ciphertext, but unlocking depends on the same password and the mobile runtime's Web Crypto support. Always test a copy of a vault before adopting a sync workflow.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

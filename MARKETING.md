@@ -31,3 +31,9 @@ Three successful protection operations are free per local calendar day. Addition
 ## Listing
 
 Official Obsidian Community listing: https://community.obsidian.md/plugins/aegis-note-locker
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

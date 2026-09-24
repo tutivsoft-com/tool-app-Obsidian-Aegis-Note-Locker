@@ -1,6 +1,6 @@
 # Aegis Note Locker Software Architecture
 
-Version: 3.3.16
+Version: 3.3.20
 
 ## Runtime boundary
 
@@ -38,3 +38,9 @@ A successful sign-in may persist rotating Constance session tokens in Obsidian p
 ## Build and release
 
 TypeScript sources in src/ are mirrored into publish/src/. The release build bundles publish/main.ts into publish/main.js. The public snapshot includes the complete source tree, manifest, stylesheet, license, documentation, and attestation workflow; GitHub release assets are main.js, manifest.json, and styles.css.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

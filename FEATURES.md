@@ -1,6 +1,6 @@
 # Aegis Note Locker Features
 
-Version: 3.3.16
+Version: 3.3.20
 
 ## Selective note protection
 
@@ -38,3 +38,9 @@ Version: 3.3.16
 - The path, filename, locked marker, and unprotected frontmatter remain visible.
 - Plaintext can be exposed while a note is unlocked or on a compromised device; JavaScript cannot guarantee perfect memory zeroization.
 - Forgetting a password may make protected content unrecoverable.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

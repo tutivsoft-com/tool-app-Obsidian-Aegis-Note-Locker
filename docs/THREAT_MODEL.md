@@ -15,3 +15,9 @@ Encryption cannot protect a plaintext note while it is unlocked, displayed in an
 The password is kept in memory only for the configured session timeout and is cleared on Lock Now, timeout, unload, or an error path. A volatile undo record may contain the original plaintext until that same boundary; it is never persisted to plugin data. User-requested exports encrypt the entire source note before writing a `.aegis` file. Optional billing requests go only to the TutivSoft Constance browser-relay endpoints and contain app/device/checkout/event metadata; they never contain passwords, keys, paths, plaintext, ciphertext, or protected properties. A paid protection intent is persisted before a vault write and charged after verification; uncertain charges retry by event ID, and failed writes do not call a remote refund path.
 
 Locked bodies and protected values are intentionally not searchable. Paths and unprotected metadata remain visible, and frontmatter links may continue to support graph behavior. Links in a locked body disappear from graph/index behavior until unlock. Sync and Git can safely transport ciphertext, but Aegis refuses stale-file overwrites so users must resolve conflicts explicitly.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

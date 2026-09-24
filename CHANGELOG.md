@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.20 (2026-09-24)
+
+- Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+
+
 ## 3.3.19
 
 - Moved password and protection defaults into settings and made operation review optional.

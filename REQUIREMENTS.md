@@ -100,3 +100,9 @@ AI is explicitly not part of the MVP and should not be connected to protected co
 - Encryption and decryption are previewed, recoverable, and atomic.
 - Passwords and plaintext never appear in logs or network requests.
 - The free daily protection allowance and all encryption operations work without AI or cloud key escrow; account and network access are needed for paid credit and checkout operations.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

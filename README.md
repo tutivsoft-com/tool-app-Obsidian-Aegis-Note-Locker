@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.16`
+Version: `3.3.20`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
@@ -43,3 +43,9 @@ The source is under `src/`; the `publish/` directory is the public release zone 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->

@@ -5,3 +5,9 @@ Aegis Note Locker encrypts note content locally. It does not collect analytics, 
 The plugin stores its session timeout and backup-folder preference in Obsidian plugin data. Encrypted note envelopes and user-requested encrypted exports are stored in the vault. The export includes a source path label so the user can identify it; the note content itself is encrypted.
 
 Install only plugin builds you trust. A compromised device or another plugin with access to the unlocked editor can still read plaintext; client-side encryption does not change that boundary.
+
+<!-- one-click-workflow:start -->
+## Workflow defaults (v3.3.20)
+
+Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
+<!-- one-click-workflow:end -->
