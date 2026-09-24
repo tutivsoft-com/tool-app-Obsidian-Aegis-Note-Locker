@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.22 (2026-09-25)
+
+- Synchronized the release version across release metadata and current product documentation; plugin behavior is unchanged.
+
 ## 3.3.20 (2026-09-24)
 
 - Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
