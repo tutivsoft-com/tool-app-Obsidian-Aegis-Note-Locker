@@ -13,7 +13,7 @@ Aegis is an Obsidian desktop community plugin. Obsidian provides the workspace, 
 - src/crypto.ts derives keys and encrypts/decrypts versioned authenticated envelopes.
 - src/safety.ts stages writes, checks the original file state, verifies results, and maintains the current operation's rollback record.
 - src/types.ts defines settings, encrypted records, and undo data.
-- src/ui.ts implements confirmation, password, property selection, and progress modals.
+- src/ui.ts implements optional review and bulk progress views. Session credentials and default protected properties are configured in Settings.
 - src/settings.ts presents protection, session, backup, and billing preferences.
 - src/usage.ts tracks the local daily free-use allowance.
 - src/billing.ts and src/constance-account.ts integrate account sign-in, allowance and credit checks, idempotent charge events, and checkout.
@@ -23,7 +23,7 @@ Aegis is an Obsidian desktop community plugin. Obsidian provides the workspace, 
 ## Data flow
 
 1. A command selects the current note or the requested set of Markdown notes.
-2. Aegis previews the operation and obtains explicit confirmation. Creating a new encryption record requires password confirmation.
+2. Aegis reads the session-only password and configured property list. Review dialogs are shown only when enabled in Settings.
 3. The crypto module serializes the protected content and encrypts it locally. Aegis tests decryption before it is committed.
 4. The safety module verifies that the source has not changed, stages the new file, verifies the staged result, and then replaces the source.
 5. Billing meters successful protection operations only. Usage metadata uses stable event identifiers; protected content and note paths stay out of network requests.

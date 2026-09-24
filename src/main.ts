@@ -3,7 +3,7 @@ import { decryptText, encryptText, sha256Hex } from "./crypto";
 import { AEGIS_KEY, displayValue, parseMarkdown, serializeMarkdown, topLevelPropertyNames } from "./frontmatter";
 import { DEFAULT_SETTINGS, AegisSettingTab } from "./settings";
 import { assertNoConflict, temporaryPath } from "./safety";
-import { ConfirmModal, PasswordModal, ProgressModal, PropertyPickerModal, notifyFailure } from "./ui";
+import { ConfirmModal, ProgressModal, notifyFailure } from "./ui";
 import { initializeBilling, reserveProtectionUse, syncBalance, type ProtectionCommitResult, type UseReservation } from "./billing";
 import type { AegisRecord, AegisSettings, UndoEntry, UndoRecord } from "./types";
 import { PluginSupport } from "./plugin-support";
@@ -106,22 +106,19 @@ export default class AegisNoteLockerPlugin extends Plugin {
   private currentFile(): TFile | null { return this.app.workspace.getActiveFile(); }
 
   private async passwordForNewEncryption(): Promise<string | null> {
-    const result = await new PasswordModal(this.app, "Set Aegis password", true).waitForResult();
-    if (!result) return null;
-    this.setSessionPassword(result.password);
-    return result.password;
+    if (this.sessionPassword && Date.now() < this.sessionExpiresAt) { this.touchSession(); return this.sessionPassword; }
+    new Notice("Aegis: set the session password in plugin settings before running this command.");
+    return null;
   }
 
   private async passwordForUnlock(): Promise<string | null> {
     if (this.sessionPassword && Date.now() < this.sessionExpiresAt) { this.touchSession(); return this.sessionPassword; }
     this.clearSession();
-    const result = await new PasswordModal(this.app, "Unlock with Aegis password", false).waitForResult();
-    if (!result) return null;
-    this.setSessionPassword(result.password);
-    return result.password;
+    new Notice("Aegis: set the session password in plugin settings before running this command.");
+    return null;
   }
 
-  private setSessionPassword(password: string): void { this.sessionPassword = password; this.touchSession(); }
+  setSessionPassword(password: string): void { this.sessionPassword = password || undefined; this.touchSession(); }
   private touchSession(): void { this.sessionExpiresAt = Date.now() + this.settings.sessionTimeoutMinutes * 60_000; }
   private expireSessionIfNeeded(): void { if (this.sessionPassword && Date.now() >= this.sessionExpiresAt) { this.clearSession(); new Notice("Aegis session expired. Encrypted notes are locked."); } }
   lockNow(): void { this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; this.updateStatusBar(); }
@@ -133,8 +130,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const original = await this.app.vault.read(file);
       const parsed = parseMarkdown(original);
       if (asRecord(parsed.frontmatter[AEGIS_KEY])) { new Notice("Aegis: this note already has protected content."); return; }
-      const preview = await new ConfirmModal(this.app, "Review note lock", `The note body will become unreadable to Markdown search and third-party plugins. Its path and frontmatter will remain. A volatile undo record will be held for this session.`, "Continue to password").waitForResult();
-      if (!preview) return;
+      if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review note lock", `The note body will become unreadable to Markdown search and third-party plugins. Its path and frontmatter will remain. A volatile undo record will be held for this session.`, "Continue").waitForResult())) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(parsed.body, password);
@@ -156,10 +152,10 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const existing = asRecord(parsed.frontmatter[AEGIS_KEY]);
       const keys = topLevelPropertyNames(parsed.frontmatter).filter((key) => !existing?.properties?.[key]);
       if (!keys.length) { new Notice("Aegis: this note has no top-level frontmatter properties."); return; }
-      const chosen = await new PropertyPickerModal(this.app, keys.map((key) => ({ key, selected: false }))).waitForResult();
-      if (!chosen?.length) return;
-      const preview = await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue to password").waitForResult();
-      if (!preview) return;
+      const configured = this.settings.protectedProperties.split(/[\n,]/).map((key) => key.trim()).filter(Boolean);
+      const chosen = configured.length ? keys.filter((key) => configured.includes(key)) : keys;
+      if (!chosen.length) { new Notice("Aegis: none of the configured frontmatter properties exist in this note."); return; }
+      if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue").waitForResult())) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const protectedValues = { ...(existing?.properties ?? {}) };
@@ -183,8 +179,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const parsed = parseMarkdown(original);
       const record = asRecord(parsed.frontmatter[AEGIS_KEY]);
       if (!record) { new Notice("Aegis: this note is not locked."); return; }
-      const preview = await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue to unlock").waitForResult();
-      if (!preview) return;
+      if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue").waitForResult())) return;
       const password = await this.passwordForUnlock();
       if (!password) return;
       const nextFrontmatter = { ...parsed.frontmatter };
@@ -207,8 +202,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const candidates: TFile[] = [];
       for (const file of files) { const content = await this.app.vault.read(file); if (!asRecord(parseMarkdown(content).frontmatter[AEGIS_KEY])) candidates.push(file); }
       if (!candidates.length) { new Notice("Aegis: no unlocked Markdown notes found."); return; }
-      const approved = await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue to password").waitForResult();
-      if (!approved) return;
+      if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue").waitForResult())) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const progress = new ProgressModal(this.app, candidates.length);
@@ -246,8 +240,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
     if (!file || !isMarkdown(file)) { new Notice("Aegis: open a Markdown note first."); return; }
     try {
       const original = await this.app.vault.read(file);
-      const approved = await new ConfirmModal(this.app, "Export encrypted backup", "Aegis will write an encrypted copy into the configured vault backup folder. The backup will not contain your password.", "Choose password").waitForResult();
-      if (!approved) return;
+      if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Export encrypted backup", "Aegis will write an encrypted copy into the configured vault backup folder. The backup will not contain your password.", "Continue").waitForResult())) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(original, password);
@@ -263,8 +256,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
   private async rollbackLastOperation(): Promise<void> {
     const record = this.undoRecord;
     if (!record?.entries.length) { new Notice("Aegis: no volatile undo record is available."); return; }
-    const approved = await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult();
-    if (!approved) return;
+    if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult())) return;
     let restored = 0;
     const remaining: UndoEntry[] = [];
     for (const entry of record.entries) {

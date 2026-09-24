@@ -664,7 +664,9 @@ var DEFAULT_SETTINGS = {
   purchasedUses: 0,
   pendingProtectionCharges: [],
   pendingCheckoutKey: "",
-  pendingCheckoutPack: ""
+  pendingCheckoutPack: "",
+  reviewBeforeApply: false,
+  protectedProperties: ""
 };
 
 // publish/src/settings.ts
@@ -677,6 +679,25 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
+    let sessionPassword = "";
+    new import_obsidian4.Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => {
+      text.setPlaceholder("Session password");
+      text.inputEl.type = "password";
+      text.onChange((value) => sessionPassword = value);
+    }).addButton((button) => button.setButtonText("Set for session").setCta().onClick(() => {
+      if (!sessionPassword) return;
+      this.plugin.setSessionPassword(sessionPassword);
+      sessionPassword = "";
+      new import_obsidian4.Notice("Aegis session password set.");
+    }));
+    new import_obsidian4.Setting(containerEl).setName("Review before applying").setDesc("Off by default for one-click actions. Turn on to see a review/confirmation window before changes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.reviewBeforeApply).onChange(async (value) => {
+      this.plugin.settings.reviewBeforeApply = value;
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian4.Setting(containerEl).setName("Protected properties").setDesc("Comma or newline separated frontmatter property names to protect. Leave empty to protect every eligible property.").addTextArea((text) => text.setValue(this.plugin.settings.protectedProperties).onChange(async (value) => {
+      this.plugin.settings.protectedProperties = value;
+      await this.plugin.saveSettings();
+    }));
     containerEl.createEl("p", { text: "All encryption is local. Optional billing uses an account session and install ID; passwords and protected content never leave the vault." });
     new import_obsidian4.Setting(containerEl).setName("Billing").setHeading();
     const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
@@ -766,123 +787,6 @@ var ConfirmModal = class extends import_obsidian5.Modal {
   }
   onClose() {
     this.finish(false);
-  }
-  finish(value) {
-    var _a;
-    if (this.settled) return;
-    this.settled = true;
-    (_a = this.resolvePromise) == null ? void 0 : _a.call(this, value);
-    this.close();
-  }
-};
-var PasswordModal = class extends import_obsidian5.Modal {
-  constructor(app, title, confirmPassword) {
-    super(app);
-    __publicField(this, "title", title);
-    __publicField(this, "confirmPassword", confirmPassword);
-    __publicField(this, "resolvePromise");
-    __publicField(this, "settled", false);
-  }
-  waitForResult() {
-    this.open();
-    return new Promise((resolve) => {
-      this.resolvePromise = resolve;
-    });
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h2", { text: this.title });
-    contentEl.createEl("p", { text: "Aegis keeps this password local. Forgetting it may make encrypted content unrecoverable." });
-    const form = contentEl.createEl("form");
-    const passwordLabel = form.createEl("label", { text: "Password" });
-    const password = passwordLabel.createEl("input", { type: "password" });
-    password.setAttr("autocomplete", this.confirmPassword ? "new-password" : "current-password");
-    password.setAttr("required", "true");
-    password.setAttr("aria-label", "Aegis password");
-    let confirmation;
-    if (this.confirmPassword) {
-      const confirmLabel = form.createEl("label", { text: "Confirm password" });
-      confirmation = confirmLabel.createEl("input", { type: "password" });
-      confirmation.setAttr("autocomplete", "new-password");
-      confirmation.setAttr("required", "true");
-      confirmation.setAttr("aria-label", "Confirm Aegis password");
-    }
-    const error = form.createDiv({ cls: "aegis-error" });
-    const actions = form.createDiv({ cls: "aegis-actions" });
-    const cancel = actions.createEl("button", { text: "Cancel", type: "button" });
-    cancel.onclick = () => this.finish(null);
-    const submit = actions.createEl("button", { text: this.confirmPassword ? "Set password" : "Unlock", type: "submit", cls: "mod-cta" });
-    form.onsubmit = (event) => {
-      event.preventDefault();
-      if (password.value.length < 8) {
-        error.setText("Use at least 8 characters.");
-        return;
-      }
-      if (this.confirmPassword && password.value !== (confirmation == null ? void 0 : confirmation.value)) {
-        error.setText("Passwords do not match.");
-        return;
-      }
-      this.finish({ password: password.value, confirmation: confirmation == null ? void 0 : confirmation.value });
-    };
-    window.setTimeout(() => password.focus(), 0);
-    void submit;
-  }
-  onClose() {
-    this.finish(null);
-  }
-  finish(value) {
-    var _a;
-    if (this.settled) return;
-    this.settled = true;
-    (_a = this.resolvePromise) == null ? void 0 : _a.call(this, value);
-    this.close();
-  }
-};
-var PropertyPickerModal = class extends import_obsidian5.Modal {
-  constructor(app, properties) {
-    super(app);
-    __publicField(this, "properties", properties);
-    __publicField(this, "resolvePromise");
-    __publicField(this, "settled", false);
-  }
-  waitForResult() {
-    this.open();
-    return new Promise((resolve) => {
-      this.resolvePromise = resolve;
-    });
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h2", { text: "Choose frontmatter properties to protect" });
-    contentEl.createEl("p", { text: "Only selected top-level values will be encrypted. Names remain visible so the note stays understandable." });
-    const form = contentEl.createEl("form");
-    const boxes = [];
-    for (const property of this.properties) {
-      const label = form.createEl("label", { cls: "aegis-checkbox" });
-      const input = label.createEl("input", { type: "checkbox" });
-      input.checked = property.selected;
-      input.dataset.key = property.key;
-      input.setAttr("aria-label", property.key);
-      boxes.push(input);
-      label.createSpan({ text: property.key });
-    }
-    const actions = form.createDiv({ cls: "aegis-actions" });
-    const cancel = actions.createEl("button", { text: "Cancel", type: "button" });
-    cancel.onclick = () => this.finish(null);
-    const submit = actions.createEl("button", { text: "Review", type: "submit", cls: "mod-cta" });
-    form.onsubmit = (event) => {
-      event.preventDefault();
-      this.finish(boxes.filter((box) => box.checked).map((box) => {
-        var _a;
-        return (_a = box.dataset.key) != null ? _a : "";
-      }));
-    };
-    void submit;
-  }
-  onClose() {
-    this.finish(null);
   }
   finish(value) {
     var _a;
@@ -1136,10 +1040,12 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
     return this.app.workspace.getActiveFile();
   }
   async passwordForNewEncryption() {
-    const result = await new PasswordModal(this.app, "Set Aegis password", true).waitForResult();
-    if (!result) return null;
-    this.setSessionPassword(result.password);
-    return result.password;
+    if (this.sessionPassword && Date.now() < this.sessionExpiresAt) {
+      this.touchSession();
+      return this.sessionPassword;
+    }
+    new import_obsidian7.Notice("Aegis: set the session password in plugin settings before running this command.");
+    return null;
   }
   async passwordForUnlock() {
     if (this.sessionPassword && Date.now() < this.sessionExpiresAt) {
@@ -1147,13 +1053,11 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
       return this.sessionPassword;
     }
     this.clearSession();
-    const result = await new PasswordModal(this.app, "Unlock with Aegis password", false).waitForResult();
-    if (!result) return null;
-    this.setSessionPassword(result.password);
-    return result.password;
+    new import_obsidian7.Notice("Aegis: set the session password in plugin settings before running this command.");
+    return null;
   }
   setSessionPassword(password) {
-    this.sessionPassword = password;
+    this.sessionPassword = password || void 0;
     this.touchSession();
   }
   touchSession() {
@@ -1188,8 +1092,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
         new import_obsidian7.Notice("Aegis: this note already has protected content.");
         return;
       }
-      const preview = await new ConfirmModal(this.app, "Review note lock", `The note body will become unreadable to Markdown search and third-party plugins. Its path and frontmatter will remain. A volatile undo record will be held for this session.`, "Continue to password").waitForResult();
-      if (!preview) return;
+      if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review note lock", `The note body will become unreadable to Markdown search and third-party plugins. Its path and frontmatter will remain. A volatile undo record will be held for this session.`, "Continue").waitForResult()) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(parsed.body, password);
@@ -1225,10 +1128,13 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
         new import_obsidian7.Notice("Aegis: this note has no top-level frontmatter properties.");
         return;
       }
-      const chosen = await new PropertyPickerModal(this.app, keys.map((key) => ({ key, selected: false }))).waitForResult();
-      if (!(chosen == null ? void 0 : chosen.length)) return;
-      const preview = await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue to password").waitForResult();
-      if (!preview) return;
+      const configured = this.settings.protectedProperties.split(/[\n,]/).map((key) => key.trim()).filter(Boolean);
+      const chosen = configured.length ? keys.filter((key) => configured.includes(key)) : keys;
+      if (!chosen.length) {
+        new import_obsidian7.Notice("Aegis: none of the configured frontmatter properties exist in this note.");
+        return;
+      }
+      if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue").waitForResult()) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const protectedValues = { ...(_b = existing == null ? void 0 : existing.properties) != null ? _b : {} };
@@ -1259,8 +1165,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
         new import_obsidian7.Notice("Aegis: this note is not locked.");
         return;
       }
-      const preview = await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue to unlock").waitForResult();
-      if (!preview) return;
+      if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue").waitForResult()) return;
       const password = await this.passwordForUnlock();
       if (!password) return;
       const nextFrontmatter = { ...parsed.frontmatter };
@@ -1291,8 +1196,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
         new import_obsidian7.Notice("Aegis: no unlocked Markdown notes found.");
         return;
       }
-      const approved = await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue to password").waitForResult();
-      if (!approved) return;
+      if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue").waitForResult()) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const progress = new ProgressModal(this.app, candidates.length);
@@ -1341,8 +1245,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
     }
     try {
       const original = await this.app.vault.read(file);
-      const approved = await new ConfirmModal(this.app, "Export encrypted backup", "Aegis will write an encrypted copy into the configured vault backup folder. The backup will not contain your password.", "Choose password").waitForResult();
-      if (!approved) return;
+      if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Export encrypted backup", "Aegis will write an encrypted copy into the configured vault backup folder. The backup will not contain your password.", "Continue").waitForResult()) return;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(original, password);
@@ -1362,8 +1265,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
       new import_obsidian7.Notice("Aegis: no volatile undo record is available.");
       return;
     }
-    const approved = await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult();
-    if (!approved) return;
+    if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult()) return;
     let restored = 0;
     const remaining = [];
     for (const entry of record.entries) {

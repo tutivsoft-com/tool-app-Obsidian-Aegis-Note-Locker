@@ -2,19 +2,19 @@
 
 ## Lock a note
 
-Open a Markdown note and run **Aegis: Lock current note**. Review the warning, create and confirm a password, and wait for the success notice. The filename and readable frontmatter remain; the body becomes a placeholder and the encrypted envelope is stored in the note's frontmatter.
+Open a Markdown note and run **Aegis Note Locker: Lock current note**. Review the warning, create and confirm a password, and wait for the success notice. The filename and readable frontmatter remain; the body becomes a placeholder and the encrypted envelope is stored in the note's frontmatter.
 
 ## Protect frontmatter values
 
-Run **Aegis: Lock selected frontmatter properties**, choose top-level properties, review the list, and confirm. Property names stay readable, while values are replaced by `Protected by Aegis` and encrypted records are kept in the Aegis marker. Locking the same note again lets you add more properties.
+Run **Aegis Note Locker: Lock selected frontmatter properties**, choose top-level properties, review the list, and confirm. Property names stay readable, while values are replaced by `Protected by Aegis` and encrypted records are kept in the Aegis marker. Locking the same note again lets you add more properties.
 
 ## Unlock and lock the session
 
-Run **Aegis: Unlock current note** and provide the password. Aegis verifies the authenticated record before writing anything. The password is kept only in memory until the timeout in Settings. Use **Aegis: Lock now (clear session)** whenever you leave the device.
+Run **Aegis Note Locker: Unlock current note** and provide the password. Aegis verifies the authenticated record before writing anything. The password is kept only in memory until the timeout in Settings. Use **Aegis Note Locker: Lock now (clear session)** whenever you leave the device.
 
 ## Recovery and backups
 
-Use **Aegis: Export encrypted backup of current note** before a migration or a risky sync. The export is a password-protected `.aegis` file in the configured vault-relative folder. It does not contain a password. **Aegis: Roll back last operation** restores the last changed note(s) only when the current file still matches Aegis's expected result.
+Use **Aegis Note Locker: Export encrypted backup of current note** before a migration or a risky sync. The export is a password-protected `.aegis` file in the configured vault-relative folder. It does not contain a password. **Aegis Note Locker: Roll back last operation** restores the last changed note(s) only when the current file still matches Aegis's expected result.
 
 The undo record is intentionally volatile: it is cleared on timeout, Lock Now, unload, and restart. Keep a normal vault backup as your durable recovery path.
 

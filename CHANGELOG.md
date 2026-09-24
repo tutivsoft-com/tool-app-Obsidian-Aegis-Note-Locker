@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.19
+
+- Moved password and protection defaults into settings and made operation review optional.
+
+
 ## 3.3.16 - 2026-09-24
 
 - Added product feature, architecture, and marketing documentation.

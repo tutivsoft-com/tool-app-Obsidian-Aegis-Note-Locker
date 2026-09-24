@@ -15,7 +15,7 @@ Version: 3.3.16
 - Generate a fresh random salt and nonce for each encrypted record.
 - Store an algorithm- and format-versioned envelope with ciphertext and authentication data, never the password.
 - Test-decrypt before changing the source note and fail closed for wrong passwords, damaged records, or unsupported formats.
-- Preview the change, check the source for concurrent edits, stage writes, and verify the result before replacing the note.
+- Run Lock, Unlock, Backup, and Rollback directly after configuring a session password in Settings. Optional review windows are off by default; stale-file checks and write verification always remain active.
 
 ## Recovery and session controls
 

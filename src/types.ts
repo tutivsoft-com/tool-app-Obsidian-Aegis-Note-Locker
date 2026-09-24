@@ -15,6 +15,8 @@ export interface AegisSettings {
   pendingProtectionCharges: string[];
   pendingCheckoutKey: string;
   pendingCheckoutPack: string;
+  reviewBeforeApply: boolean;
+  protectedProperties: string;
 }
 
 export const DEFAULT_SETTINGS: AegisSettings = {
@@ -32,6 +34,8 @@ export const DEFAULT_SETTINGS: AegisSettings = {
   pendingProtectionCharges: [],
   pendingCheckoutKey: "",
   pendingCheckoutPack: "",
+  reviewBeforeApply: false,
+  protectedProperties: "",
 };
 
 export interface AegisRecord {

@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type AegisNoteLockerPlugin from "./main";
 import { openCheckout, retryPendingProtectionCharges, syncBalance } from "./billing";
 import { remainingFreeUses } from "./usage";
@@ -12,6 +12,10 @@ export class AegisSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
+    let sessionPassword = "";
+    new Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => { text.setPlaceholder("Session password"); text.inputEl.type = "password"; text.onChange((value) => sessionPassword = value); }).addButton((button) => button.setButtonText("Set for session").setCta().onClick(() => { if (!sessionPassword) return; this.plugin.setSessionPassword(sessionPassword); sessionPassword = ""; new Notice("Aegis session password set."); }));
+    new Setting(containerEl).setName("Review before applying").setDesc("Off by default for one-click actions. Turn on to see a review/confirmation window before changes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.reviewBeforeApply).onChange(async (value) => { this.plugin.settings.reviewBeforeApply = value; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Protected properties").setDesc("Comma or newline separated frontmatter property names to protect. Leave empty to protect every eligible property.").addTextArea((text) => text.setValue(this.plugin.settings.protectedProperties).onChange(async (value) => { this.plugin.settings.protectedProperties = value; await this.plugin.saveSettings(); }));
     containerEl.createEl("p", { text: "All encryption is local. Optional billing uses an account session and install ID; passwords and protected content never leave the vault." });
     new Setting(containerEl).setName("Billing").setHeading();
     const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });

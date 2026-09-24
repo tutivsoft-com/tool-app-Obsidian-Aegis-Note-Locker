@@ -43,7 +43,7 @@ Encryption is not a cosmetic lock. The project must document its threat model be
 
 ## Password and recovery UX
 
-18. Require password confirmation before first encryption.
+18. Keep the password session-only; let the user set it in Settings so routine commands do not open password dialogs.
 19. Explain that forgetting the password may make encrypted content unrecoverable.
 20. Provide a user-initiated encrypted export or backup workflow without uploading secrets.
 21. Never include plaintext in logs, error notices, crash reports, or clipboard operations.
@@ -53,7 +53,7 @@ Encryption is not a cosmetic lock. The project must document its threat model be
 
 ## Safe file operations
 
-25. Preview the impact before encrypting or decrypting a note or property batch.
+25. Keep before/after review optional and off by default; use the Settings toggle when a user wants a review window.
 26. Create a recoverable backup or undo record before changing source files.
 27. Use atomic writes and verify the result can be decrypted before replacing the original.
 28. Handle sync conflicts by refusing to overwrite and asking the user to resolve them.
