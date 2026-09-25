@@ -1,6 +1,6 @@
 # Aegis Note Locker
 
-Version: `3.3.23`
+Version: `3.3.26`
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. It is an offline-first Obsidian plugin: encryption needs no account, AI, or cloud key escrow. Optional billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
@@ -14,7 +14,7 @@ Aegis protects individual Markdown note bodies and selected top-level frontmatte
 - Provides Lock All with progress and cancellation, a configurable session timeout, and an explicit Lock Now command.
 - Includes three successful body/properties protection operations free per local calendar day, then one purchased use per successful protection operation. Unlock, view, export, and rollback are free.
 
-Install by placing `publish/main.js`, `publish/manifest.json`, and `publish/styles.css` in `.obsidian/plugins/aegis-note-locker/`, then enable Aegis in Obsidian. For development, run `npm install` and `npm run build`.
+Install Aegis from the Obsidian Community directory and enable it in Community plugins. The GitHub release also contains the runtime files for manual installation.
 
 ## Safe workflow
 
@@ -26,26 +26,12 @@ Locked note bodies are replaced by a visible placeholder; encrypted values are c
 
 The note-encryption password and plaintext are never written to logs, clipboard, network requests, or plugin settings. A separate billing account password is submitted only to authenticate with Constance; it is not retained as a password. Rotating billing session tokens are stored in Obsidian plugin data. Billing requests contain account/app identifiers, checkout metadata, and credit event IDs, never note paths, encrypted envelopes, encryption passwords, or protected content. Payment fulfillment remains webhook-authoritative and the plugin refreshes entitlements by polling.
 
-See [docs/THREAT_MODEL.md](publish/docs/THREAT_MODEL.md), [docs/USER_GUIDE.md](publish/docs/USER_GUIDE.md), and [docs/PRIVACY.md](publish/docs/PRIVACY.md) for limitations, recovery behavior, and sync guidance.
-
-See [Features](FEATURES.md), [Requirements](REQUIREMENTS.md), [Software Architecture](SOFTWARE_ARCHITECTURE.md), and [Marketing](MARKETING.md) for the product and implementation overview.
-
-## Development
-
-```text
-npm install
-npm run check
-npm run build
-```
-
-The source is under `src/`; the `publish/` directory is the public release zone and contains a mirrored source tree plus the generated runtime artifact. Aegis has no AI integration. The live Paddle price IDs are configured in the auditable billing map.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 <!-- one-click-workflow:start -->
-## Workflow defaults (v3.3.20)
+## Workflow defaults (v3.3.26)
 
 Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
 <!-- one-click-workflow:end -->
