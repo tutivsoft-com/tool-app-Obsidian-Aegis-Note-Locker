@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.23 (2026-09-25)
+
+- Synchronized version metadata and the packaged runtime across the source and public release repositories.
+
+
 ## 3.3.22 (2026-09-25)
 
 - Synchronized the release version across release metadata and current product documentation; plugin behavior is unchanged.

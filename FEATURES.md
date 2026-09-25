@@ -1,6 +1,6 @@
 # Aegis Note Locker Features
 
-Version: 3.3.20
+Version: 3.3.23
 
 ## Selective note protection
 
