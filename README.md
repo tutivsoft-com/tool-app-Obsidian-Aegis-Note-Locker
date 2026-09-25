@@ -38,7 +38,7 @@ npm run check
 npm run build
 ```
 
-The source is under `src/`; the `publish/` directory is the public release zone and contains a mirrored source tree plus the generated runtime artifact. Aegis has no AI integration. The live Paddle price IDs are configured in the auditable billing map.
+Aegis has no AI integration. The private source repository is the implementation and build source of truth, and billing configuration is maintained there. This checkout still includes source-inclusive material from an earlier snapshot; the next curated release should contain approved public files and assets, not a mirrored source tree.
 
 ## License
 
