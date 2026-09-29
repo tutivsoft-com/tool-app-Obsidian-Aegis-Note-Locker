@@ -11,6 +11,7 @@ export class AegisSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    this.plugin.support.addDiagnosticsSetting(containerEl);
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
     let sessionPassword = "";
     new Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => { text.setPlaceholder("Session password"); text.inputEl.type = "password"; text.onChange((value) => sessionPassword = value); }).addButton((button) => button.setButtonText("Set for session").setCta().onClick(() => { if (!sessionPassword) return; this.plugin.setSessionPassword(sessionPassword); sessionPassword = ""; new Notice("Aegis session password set."); }));
