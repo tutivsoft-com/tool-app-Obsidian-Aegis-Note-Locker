@@ -1,4 +1,3 @@
-"use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -19,17 +18,17 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// publish/main.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/main.ts
 var main_exports = {};
 __export(main_exports, {
   default: () => AegisNoteLockerPlugin
 });
 module.exports = __toCommonJS(main_exports);
 
-// publish/src/main.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/main.ts
 var import_obsidian7 = require("obsidian");
 
-// publish/src/crypto.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/crypto.ts
 var AEGIS_FORMAT_VERSION = 1;
 var DEFAULT_PBKDF2_ITERATIONS = 31e4;
 function cryptoApi() {
@@ -123,7 +122,7 @@ async function sha256Hex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-// publish/src/frontmatter.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/frontmatter.ts
 var import_obsidian = require("obsidian");
 var AEGIS_KEY = "aegis";
 function parseMarkdown(content) {
@@ -148,13 +147,13 @@ function topLevelPropertyNames(frontmatter) {
   return Object.keys(frontmatter).filter((key) => key !== AEGIS_KEY && !key.startsWith("aegis-"));
 }
 
-// publish/src/settings.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/settings.ts
 var import_obsidian4 = require("obsidian");
 
-// publish/src/billing.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/billing.ts
 var import_obsidian3 = require("obsidian");
 
-// publish/src/usage.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/usage.ts
 var DAILY_FREE_USES = 3;
 function localDayKey(date = /* @__PURE__ */ new Date()) {
   const year = date.getFullYear();
@@ -175,7 +174,7 @@ function remainingFreeUses(state, date = /* @__PURE__ */ new Date()) {
   return Math.max(0, DAILY_FREE_USES - normalized.freeUsesUsed);
 }
 
-// publish/src/constance-account.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/constance-account.ts
 var import_obsidian2 = require("obsidian");
 var CONSTANCE_ACCOUNT_BASE_URL = "https://app.tutivsoft.com";
 function errorDetail(response, fallback) {
@@ -278,7 +277,20 @@ async function signInBillingAccount(adapter, password, mode) {
   if (!email || !email.includes("@")) throw new Error("Enter a valid billing email.");
   if (password.length < 8) throw new Error("Password must contain at least 8 characters.");
   if (!adapter.installationId) throw new Error("The plugin installation ID is not ready.");
-  const tokens = await authenticate(mode, email, password, adapter.installationId);
+  let tokens;
+  try {
+    tokens = await authenticate(mode, email, password, adapter.installationId);
+  } catch (error) {
+    if (mode === "register" && error instanceof Error && error.message.startsWith("Account created. Verify")) {
+      adapter.state.billingEmail = email;
+      adapter.state.billingAccessToken = "";
+      adapter.state.billingRefreshToken = "";
+      adapter.state.billingAccountLinked = false;
+      adapter.state.billingRegistrationPending = true;
+      await adapter.persist();
+    }
+    throw error;
+  }
   await linkInstallation(adapter, tokens.accessToken);
   adapter.state.billingEmail = email;
   adapter.state.billingAccessToken = tokens.accessToken;
@@ -286,6 +298,32 @@ async function signInBillingAccount(adapter, password, mode) {
   adapter.state.billingAccountLinked = true;
   await adapter.persist();
   await adapter.syncBalance();
+}
+async function signOutBillingAccount(adapter) {
+  const refreshToken = adapter.state.billingRefreshToken;
+  const accessToken = adapter.state.billingAccessToken;
+  try {
+    if (refreshToken || accessToken) {
+      await (0, import_obsidian2.requestUrl)({
+        url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/logout`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+        },
+        body: JSON.stringify({ refresh_token: refreshToken || void 0 }),
+        throw: false
+      });
+    }
+  } catch (error) {
+    console.warn("Constance account logout could not reach the server", error);
+  } finally {
+    adapter.state.billingAccessToken = "";
+    adapter.state.billingRefreshToken = "";
+    adapter.state.billingAccountLinked = false;
+    adapter.state.billingRegistrationPending = false;
+    await adapter.persist();
+  }
 }
 async function claimAccountFreeUsage(state, appId, installationId, eventId, amount) {
   var _a, _b;
@@ -344,7 +382,10 @@ function addBillingAccountSettings(containerEl, adapter) {
       password = value;
     });
   });
-  const status = adapter.state.billingAccountLinked ? "Signed in and linked" : "Not signed in";
+  new import_obsidian2.Setting(containerEl).setName("Forgot password?").setDesc("Reset your Constance billing password in the browser.").addButton((button) => button.setButtonText("Open reset page").onClick(() => {
+    window.open(`${CONSTANCE_ACCOUNT_BASE_URL}/password-reset`, "_blank", "noopener");
+  }));
+  const status = adapter.state.billingAccountLinked ? "Signed in and linked" : adapter.state.billingRegistrationPending ? "Check your email, click the verification link, then sign in" : "Not signed in";
   new import_obsidian2.Setting(containerEl).setName("Billing account").setDesc(`${status}. A rotating billing session restores purchases; your password is not stored.`).addButton((button) => button.setButtonText("Sign in").onClick(async () => {
     var _a;
     button.setDisabled(true);
@@ -369,17 +410,15 @@ function addBillingAccountSettings(containerEl, adapter) {
     } finally {
       button.setDisabled(false);
     }
-  })).addButton((button) => button.setButtonText("Sign out").setDisabled(!adapter.state.billingAccessToken).onClick(async () => {
+  })).addButton((button) => button.setButtonText("Sign out").setDisabled(!adapter.state.billingAccessToken && !adapter.state.billingRefreshToken).onClick(async () => {
     var _a;
-    adapter.state.billingAccessToken = "";
-    adapter.state.billingAccountLinked = false;
-    await adapter.persist();
+    await signOutBillingAccount(adapter);
     new import_obsidian2.Notice("Billing account signed out on this installation.");
     (_a = adapter.refresh) == null ? void 0 : _a.call(adapter);
   }));
 }
 
-// publish/src/billing.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/billing.ts
 var BASE_URL = "https://app.tutivsoft.com";
 var AEGIS_APP_ID = "aegis-note-locker";
 var AEGIS_PRICE_IDS = {
@@ -649,7 +688,7 @@ async function openCheckout(plugin, pack) {
   plugin.pollAfterCheckout();
 }
 
-// publish/src/types.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/types.ts
 var DEFAULT_SETTINGS = {
   sessionTimeoutMinutes: 15,
   backupFolder: ".aegis-backups",
@@ -669,7 +708,7 @@ var DEFAULT_SETTINGS = {
   protectedProperties: ""
 };
 
-// publish/src/settings.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/settings.ts
 var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -742,7 +781,7 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
   }
 };
 
-// publish/src/safety.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/safety.ts
 function assertNoConflict(expected, current) {
   if (expected !== current) throw new Error("The note changed on disk; resolve the sync conflict before retrying.");
 }
@@ -750,7 +789,7 @@ function temporaryPath(path) {
   return `${path}.aegis-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
 }
 
-// publish/src/ui.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/ui.ts
 var import_obsidian5 = require("obsidian");
 function safeError(error) {
   const message = error instanceof Error ? error.message : "The operation failed.";
@@ -825,7 +864,7 @@ function notifyFailure(error) {
   new import_obsidian5.Notice(`Aegis: ${safeError(error)}`);
 }
 
-// publish/src/plugin-support.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/plugin-support.ts
 var import_obsidian6 = require("obsidian");
 function safeDetail(value) {
   if (value instanceof Error) return value.stack || value.message;
@@ -850,7 +889,7 @@ var DocumentationModal = class extends import_obsidian6.Modal {
       for (const item of items) list.createEl("li", { text: item });
     };
     addSection("Quick start", this.docs.quickStart);
-    addSection("Useful commands", this.docs.commands);
+    addSection("Useful commands", Array.from(/* @__PURE__ */ new Set([...this.docs.commands, "Copy full debug log"])));
     addSection("Troubleshooting", this.docs.troubleshooting);
   }
   onClose() {
@@ -880,9 +919,7 @@ var PluginSupport = class {
     this.plugin.addCommand({
       id: "copy-debug-log",
       name: "Copy debug log",
-      callback: () => {
-        void this.copyDiagnostics();
-      }
+      callback: () => this.copyDiagnostics()
     });
     this.plugin.addCommand({
       id: "open-plugin-settings",
@@ -932,7 +969,7 @@ var PluginSupport = class {
   }
 };
 
-// publish/src/main.ts
+// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/main.ts
 var LOCKED_NOTE_PLACEHOLDER = "> \u{1F512} Aegis: note body locked. Use \u201CAegis: Unlock current note\u201D to view it.";
 var LOCKED_PROPERTY_PLACEHOLDER = "\u{1F512} Protected by Aegis";
 function asRecord(value) {

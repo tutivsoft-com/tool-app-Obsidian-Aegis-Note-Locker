@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.33 (2026-09-29)
+
+- Billing sign-out revokes the current Constance session when reachable and clears both saved tokens.
+- Registration that requires email verification now shows a pending state; users sign in after following the verification link.
+- Added a visible link to the central password reset page.
+
+
 ## 3.3.23 (2026-09-25)
 
 - Synchronized version metadata and the packaged runtime across the source and public release repositories.

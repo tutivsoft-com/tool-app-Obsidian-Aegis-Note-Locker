@@ -49,3 +49,5 @@ MIT. See [LICENSE](LICENSE).
 
 Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
 <!-- one-click-workflow:end -->
+
+Billing account recovery: use **Forgot password?** in the plugin settings to open the Constance reset page. Signing out clears the local tokens and requests server session revocation.
