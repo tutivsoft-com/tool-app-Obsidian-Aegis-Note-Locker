@@ -159,7 +159,7 @@ export async function signInBillingAccount(
 ): Promise<void> {
   const email = adapter.state.billingEmail.trim().toLowerCase();
   if (!email || !email.includes("@")) throw new Error("Enter a valid billing email.");
-  if (password.length < 8) throw new Error("Password must contain at least 8 characters.");
+  if (Array.from(password).length < 8 || Array.from(password).length > 128) throw new Error("Password must be between 8 and 128 characters.");
   if (!adapter.installationId) throw new Error("The plugin installation ID is not ready.");
   let tokens;
   try {
@@ -295,7 +295,8 @@ export function addBillingAccountSettings(containerEl: HTMLElement, adapter: Con
     .setDesc("Used only for this sign-in request. The password is never saved by the plugin.")
     .addText((text) => {
       text.inputEl.type = "password";
-      text.setPlaceholder("At least 8 characters").onChange((value) => { password = value; });
+      text.inputEl.maxLength = 256;
+      text.setPlaceholder("8 to 128 characters").onChange((value) => { password = value; });
     });
   new Setting(containerEl)
     .setName("Forgot password?")
