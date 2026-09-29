@@ -18,17 +18,17 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/main.ts
+// main.ts
 var main_exports = {};
 __export(main_exports, {
   default: () => AegisNoteLockerPlugin
 });
 module.exports = __toCommonJS(main_exports);
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/main.ts
+// src/main.ts
 var import_obsidian7 = require("obsidian");
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/crypto.ts
+// src/crypto.ts
 var AEGIS_FORMAT_VERSION = 1;
 var DEFAULT_PBKDF2_ITERATIONS = 31e4;
 function cryptoApi() {
@@ -122,7 +122,7 @@ async function sha256Hex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/frontmatter.ts
+// src/frontmatter.ts
 var import_obsidian = require("obsidian");
 var AEGIS_KEY = "aegis";
 function parseMarkdown(content) {
@@ -147,13 +147,13 @@ function topLevelPropertyNames(frontmatter) {
   return Object.keys(frontmatter).filter((key) => key !== AEGIS_KEY && !key.startsWith("aegis-"));
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/settings.ts
+// src/settings.ts
 var import_obsidian4 = require("obsidian");
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/billing.ts
+// src/billing.ts
 var import_obsidian3 = require("obsidian");
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/usage.ts
+// src/usage.ts
 var DAILY_FREE_USES = 3;
 function localDayKey(date = /* @__PURE__ */ new Date()) {
   const year = date.getFullYear();
@@ -174,7 +174,7 @@ function remainingFreeUses(state, date = /* @__PURE__ */ new Date()) {
   return Math.max(0, DAILY_FREE_USES - normalized.freeUsesUsed);
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/constance-account.ts
+// src/constance-account.ts
 var import_obsidian2 = require("obsidian");
 var CONSTANCE_ACCOUNT_BASE_URL = "https://app.tutivsoft.com";
 function errorDetail(response, fallback) {
@@ -418,7 +418,7 @@ function addBillingAccountSettings(containerEl, adapter) {
   }));
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/billing.ts
+// src/billing.ts
 var BASE_URL = "https://app.tutivsoft.com";
 var AEGIS_APP_ID = "aegis-note-locker";
 var AEGIS_PRICE_IDS = {
@@ -688,7 +688,7 @@ async function openCheckout(plugin, pack) {
   plugin.pollAfterCheckout();
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/types.ts
+// src/types.ts
 var DEFAULT_SETTINGS = {
   sessionTimeoutMinutes: 15,
   backupFolder: ".aegis-backups",
@@ -708,7 +708,7 @@ var DEFAULT_SETTINGS = {
   protectedProperties: ""
 };
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/settings.ts
+// src/settings.ts
 var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -717,6 +717,7 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    this.plugin.support.addDiagnosticsSetting(containerEl);
     containerEl.createEl("h2", { text: "Aegis Note Locker" });
     let sessionPassword = "";
     new import_obsidian4.Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => {
@@ -781,7 +782,7 @@ var AegisSettingTab = class extends import_obsidian4.PluginSettingTab {
   }
 };
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/safety.ts
+// src/safety.ts
 function assertNoConflict(expected, current) {
   if (expected !== current) throw new Error("The note changed on disk; resolve the sync conflict before retrying.");
 }
@@ -789,7 +790,7 @@ function temporaryPath(path) {
   return `${path}.aegis-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/ui.ts
+// src/ui.ts
 var import_obsidian5 = require("obsidian");
 function safeError(error) {
   const message = error instanceof Error ? error.message : "The operation failed.";
@@ -864,16 +865,63 @@ function notifyFailure(error) {
   new import_obsidian5.Notice(`Aegis: ${safeError(error)}`);
 }
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/plugin-support.ts
+// src/plugin-support.ts
 var import_obsidian6 = require("obsidian");
-function safeDetail(value) {
-  if (value instanceof Error) return value.stack || value.message;
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch (e) {
-    return String(value);
+var SAFE_DETAIL_KEYS = /* @__PURE__ */ new Set([
+  "version",
+  "operation",
+  "scope",
+  "selectedCount",
+  "total",
+  "changed",
+  "skipped",
+  "failed",
+  "unchanged",
+  "reviewEnabled",
+  "fieldCount",
+  "noteChars",
+  "httpStatus",
+  "errorType",
+  "outcome",
+  "restored",
+  "authorizationSource",
+  "cancelled",
+  "line",
+  "column",
+  "settingCount",
+  "attempt",
+  "attempts",
+  "queueCount",
+  "itemCount",
+  "fileCount",
+  "imageCount",
+  "stage",
+  "category",
+  "status",
+  "durationMs",
+  "elapsedMs"
+]);
+function safeString(value) {
+  if (value.length <= 120 && /^[A-Za-z0-9 _=.,:-]*$/.test(value) && !/(?:sk-[A-Za-z0-9]|bearer|api.?key|token|secret)/i.test(value)) {
+    return value;
   }
+  return "[omitted]";
+}
+function safeDetail(value) {
+  if (value instanceof Error) return JSON.stringify({ errorType: safeString(value.name || "Error") });
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "[detail omitted]";
+  const safe = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!SAFE_DETAIL_KEYS.has(key)) continue;
+    if (typeof item === "string") safe[key] = safeString(item);
+    else if (typeof item === "number" && Number.isFinite(item)) safe[key] = item;
+    else if (typeof item === "boolean" || item === null) safe[key] = item;
+  }
+  return JSON.stringify(safe);
+}
+function safeErrorType(error) {
+  if (error instanceof Error) return safeString(error.name || "Error");
+  return safeString(typeof error);
 }
 var DocumentationModal = class extends import_obsidian6.Modal {
   constructor(app, docs) {
@@ -881,7 +929,7 @@ var DocumentationModal = class extends import_obsidian6.Modal {
     __publicField(this, "docs", docs);
   }
   onOpen() {
-    this.titleEl.setText(`${this.docs.name} documentation`);
+    this.titleEl.setText(this.docs.name + " documentation");
     this.contentEl.createEl("p", { text: this.docs.summary });
     const addSection = (title, items) => {
       this.contentEl.createEl("h3", { text: title });
@@ -901,27 +949,38 @@ var PluginSupport = class {
     __publicField(this, "plugin", plugin);
     __publicField(this, "docs", docs);
     __publicField(this, "entries", []);
-    __publicField(this, "maxEntries", 250);
+    __publicField(this, "maxEntries", 1e3);
+    __publicField(this, "droppedEntries", 0);
+    __publicField(this, "started", false);
   }
   start() {
-    this.info("plugin.loaded", `version=${this.plugin.manifest.version}`);
+    if (this.started) return;
+    this.started = true;
+    this.info("plugin.loaded", { version: this.plugin.manifest.version });
     this.plugin.registerDomEvent(window, "error", (event) => {
-      this.error("runtime.error", event.error || event.message);
+      const error = event.error;
+      this.error("runtime.error", {
+        errorType: error instanceof Error ? error.name : "ErrorEvent",
+        line: event.lineno,
+        column: event.colno
+      });
     });
     this.plugin.registerDomEvent(window, "unhandledrejection", (event) => {
-      this.error("runtime.unhandled_rejection", event.reason);
+      this.error("runtime.unhandled_rejection", { errorType: safeErrorType(event.reason) });
     });
-    this.plugin.addCommand({
+    const addCommand = this.plugin.addCommand.bind(this.plugin);
+    const registerCommand = (command) => addCommand(this.instrumentCommand(command));
+    registerCommand({
       id: "open-documentation",
       name: "Open documentation",
       callback: () => new DocumentationModal(this.plugin.app, this.docs).open()
     });
-    this.plugin.addCommand({
+    registerCommand({
       id: "copy-debug-log",
-      name: "Copy debug log",
+      name: "Copy full debug log",
       callback: () => this.copyDiagnostics()
     });
-    this.plugin.addCommand({
+    registerCommand({
       id: "open-plugin-settings",
       name: "Open plugin settings",
       callback: () => {
@@ -930,6 +989,7 @@ var PluginSupport = class {
         setting == null ? void 0 : setting.openTabById(this.plugin.manifest.id);
       }
     });
+    this.instrumentFutureCommands(addCommand);
   }
   info(event, detail) {
     this.record("info", event, detail);
@@ -940,36 +1000,103 @@ var PluginSupport = class {
   error(event, detail) {
     this.record("error", event, detail);
   }
+  addDiagnosticsSetting(containerEl) {
+    new import_obsidian6.Setting(containerEl).setName("Diagnostics").setDesc("Copy up to the latest 1,000 events recorded by this plugin. Logs reset when the plugin reloads. Note contents, paths, credentials, and raw error messages are excluded.").addButton((button) => button.setButtonText("Copy full log").onClick(() => {
+      void this.copyDiagnostics();
+    }));
+  }
+  instrumentFutureCommands(addCommand) {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(this.plugin, "addCommand");
+    Object.defineProperty(this.plugin, "addCommand", {
+      configurable: true,
+      writable: true,
+      value: (command) => addCommand(this.instrumentCommand(command))
+    });
+    this.plugin.register(() => {
+      if (originalDescriptor) Object.defineProperty(this.plugin, "addCommand", originalDescriptor);
+      else Reflect.deleteProperty(this.plugin, "addCommand");
+    });
+  }
+  instrumentCommand(command) {
+    const instrument = (callback) => (...args) => this.trackCommand(command.id, () => callback.apply(command, args));
+    return {
+      ...command,
+      callback: command.callback ? instrument(command.callback) : void 0,
+      editorCallback: command.editorCallback ? instrument(command.editorCallback) : void 0,
+      checkCallback: command.checkCallback ? (checking) => checking ? command.checkCallback(checking) : this.trackCommand(command.id, () => command.checkCallback(checking)) : void 0,
+      editorCheckCallback: command.editorCheckCallback ? (checking, editor, context) => checking ? command.editorCheckCallback(checking, editor, context) : this.trackCommand(command.id, () => command.editorCheckCallback(checking, editor, context)) : void 0
+    };
+  }
+  trackCommand(commandId, action) {
+    const startedAt = Date.now();
+    this.info("command.started", { operation: commandId });
+    try {
+      const result = action();
+      if (result && typeof result.then === "function") {
+        return Promise.resolve(result).then(
+          (value) => {
+            this.info("command.completed", { operation: commandId, durationMs: Date.now() - startedAt });
+            return value;
+          },
+          (error) => {
+            this.error("command.failed", { operation: commandId, errorType: safeErrorType(error), durationMs: Date.now() - startedAt });
+            throw error;
+          }
+        );
+      }
+      this.info("command.completed", { operation: commandId, durationMs: Date.now() - startedAt });
+      return result;
+    } catch (error) {
+      this.error("command.failed", { operation: commandId, errorType: safeErrorType(error), durationMs: Date.now() - startedAt });
+      throw error;
+    }
+  }
   record(level, event, detail) {
-    const entry = { at: (/* @__PURE__ */ new Date()).toISOString(), level, event };
-    if (detail !== void 0) entry.detail = safeDetail(detail).slice(0, 4e3);
+    var _a;
+    const safeEvent = /^[a-z0-9][a-z0-9._-]{0,99}$/i.test(event) ? event : "invalid_event";
+    const entry = { at: (/* @__PURE__ */ new Date()).toISOString(), level, event: safeEvent };
+    if (detail !== void 0) entry.detail = safeDetail(detail);
     this.entries.push(entry);
-    if (this.entries.length > this.maxEntries) this.entries.splice(0, this.entries.length - this.maxEntries);
+    if (this.entries.length > this.maxEntries) {
+      const removed = this.entries.length - this.maxEntries;
+      this.entries.splice(0, removed);
+      this.droppedEntries += removed;
+    }
     const method = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
-    method.call(console, `[${this.docs.name}] ${event}`, detail != null ? detail : "");
+    method.call(console, "[" + this.docs.name + "] " + entry.event, (_a = entry.detail) != null ? _a : "");
   }
   async copyDiagnostics() {
+    this.info("diagnostics.copy_requested", { total: this.entries.length + 1 });
+    const captured = (/* @__PURE__ */ new Date()).toISOString();
+    const snapshot = this.entries.slice();
     const header = [
-      `Plugin: ${this.docs.name}`,
-      `Plugin ID: ${this.plugin.manifest.id}`,
-      `Version: ${this.plugin.manifest.version}`,
-      `Captured: ${(/* @__PURE__ */ new Date()).toISOString()}`,
-      `User agent: ${navigator.userAgent}`,
+      "Plugin debug log",
+      "Log scope: this plugin, since its most recent load",
+      "Plugin: " + this.docs.name,
+      "Plugin ID: " + this.plugin.manifest.id,
+      "Version: " + this.plugin.manifest.version,
+      "Captured: " + captured,
+      "User agent: " + navigator.userAgent,
+      "Events included: " + snapshot.length,
+      "Older events omitted: " + this.droppedEntries,
       ""
     ];
+    const text = header.concat(snapshot.map(
+      (entry) => entry.at + " [" + entry.level.toUpperCase() + "] " + entry.event + (entry.detail ? " \u2014 " + entry.detail : "")
+    )).join("\n");
     try {
-      await navigator.clipboard.writeText(header.concat(this.entries.map(
-        (entry) => `${entry.at} [${entry.level.toUpperCase()}] ${entry.event}${entry.detail ? ` \u2014 ${entry.detail}` : ""}`
-      )).join("\n"));
-      new import_obsidian6.Notice(`${this.docs.name}: debug log copied. Secrets and note contents are not included.`);
+      await navigator.clipboard.writeText(text);
+      this.info("diagnostics.copy_succeeded", { total: snapshot.length });
+      const omitted = this.droppedEntries ? "; " + this.droppedEntries + " older events omitted" : "";
+      new import_obsidian6.Notice(this.docs.name + ": copied " + snapshot.length + " log events" + omitted + ".");
     } catch (error) {
-      this.error("diagnostics.copy_failed", error);
-      new import_obsidian6.Notice(`${this.docs.name}: could not copy the debug log.`);
+      this.error("diagnostics.copy_failed", { errorType: safeErrorType(error) });
+      new import_obsidian6.Notice(this.docs.name + ": could not copy the debug log.");
     }
   }
 };
 
-// ../../../../Desktop/ghrepos/tool-app-Obsidian-Aegis-Note-Locker-public/src/main.ts
+// src/main.ts
 var LOCKED_NOTE_PLACEHOLDER = "> \u{1F512} Aegis: note body locked. Use \u201CAegis: Unlock current note\u201D to view it.";
 var LOCKED_PROPERTY_PLACEHOLDER = "\u{1F512} Protected by Aegis";
 function asRecord(value) {
@@ -999,13 +1126,13 @@ var AegisNoteLockerPlugin = class extends import_obsidian7.Plugin {
     await initializeBilling(this);
     if (this.settings.showStatusBar) this.statusBar = this.addStatusBarItem();
     this.addRibbonIcon("lock", "Aegis: Lock current note", () => void this.lockCurrentNote());
-    this.addCommand({ id: "lock-current-note", name: "Lock current note", callback: () => void this.lockCurrentNote() });
-    this.addCommand({ id: "unlock-current-note", name: "Unlock current note", callback: () => void this.unlockCurrentNote() });
-    this.addCommand({ id: "lock-frontmatter-properties", name: "Lock selected frontmatter properties", callback: () => void this.lockProperties() });
-    this.addCommand({ id: "lock-all-notes", name: "Lock all Markdown notes", callback: () => void this.lockAllNotes() });
+    this.addCommand({ id: "lock-current-note", name: "Lock current note", callback: () => this.lockCurrentNote() });
+    this.addCommand({ id: "unlock-current-note", name: "Unlock current note", callback: () => this.unlockCurrentNote() });
+    this.addCommand({ id: "lock-frontmatter-properties", name: "Lock selected frontmatter properties", callback: () => this.lockProperties() });
+    this.addCommand({ id: "lock-all-notes", name: "Lock all Markdown notes", callback: () => this.lockAllNotes() });
     this.addCommand({ id: "lock-now", name: "Lock now (clear session)", callback: () => this.lockNow() });
-    this.addCommand({ id: "rollback-last-operation", name: "Roll back last operation", callback: () => void this.rollbackLastOperation() });
-    this.addCommand({ id: "export-encrypted-backup", name: "Export encrypted backup of current note", callback: () => void this.exportEncryptedBackup() });
+    this.addCommand({ id: "rollback-last-operation", name: "Roll back last operation", callback: () => this.rollbackLastOperation() });
+    this.addCommand({ id: "export-encrypted-backup", name: "Export encrypted backup of current note", callback: () => this.exportEncryptedBackup() });
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => this.addFileMenuItems(menu, file)));
     this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor) => this.addEditorMenuItems(menu, editor)));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateStatusBar()));
