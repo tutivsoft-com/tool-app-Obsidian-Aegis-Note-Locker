@@ -4,6 +4,7 @@ import { AEGIS_KEY, displayValue, parseMarkdown, serializeMarkdown, topLevelProp
 import { DEFAULT_SETTINGS, AegisSettingTab } from "./settings";
 import { assertNoConflict, temporaryPath } from "./safety";
 import { ConfirmModal, ProgressModal, notifyFailure } from "./ui";
+import { jobId, recoverNative, digest } from "./native-operations";
 import { initializeBilling, reserveProtectionUse, syncBalance, type ProtectionCommitResult, type UseReservation } from "./billing";
 import type { AegisRecord, AegisSettings, UndoEntry, UndoRecord } from "./types";
 import { PluginSupport } from "./plugin-support";
@@ -56,6 +57,8 @@ export default class AegisNoteLockerPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const saved = await this.loadData() as Partial<AegisSettings> | null;
     this.settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+    this.settings.settingsMode = this.settings.settingsMode === "advanced" ? "advanced" : "simple";
+    this.settings.sessionTimeoutMinutes = Math.max(1, Math.min(120, Number(this.settings.sessionTimeoutMinutes) || 15));
     this.settings.constanceDeviceId = typeof this.settings.constanceDeviceId === "string" ? this.settings.constanceDeviceId : "";
     this.settings.billingEmail = typeof this.settings.billingEmail === "string" ? this.settings.billingEmail : "";
     this.settings.billingAccessToken = typeof this.settings.billingAccessToken === "string" ? this.settings.billingAccessToken : "";
@@ -124,6 +127,13 @@ export default class AegisNoteLockerPlugin extends Plugin {
   lockNow(): void { this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; this.updateStatusBar(); }
   private clearSession(): void { this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; }
 
+  private protectionPreview?: {file:TFile; original:string; next:string; eventId:string; success:string};
+  async retryProtectionPreview(): Promise<void> {
+    const preview=this.protectionPreview; if(!preview) {new Notice("No protection preview is open.");return;}
+    const reservation=await reserveProtectionUse(this,preview.original,preview.next,preview.eventId);
+    if(!reservation)return;
+    await this.applyProtectionChange(preview.file,preview.original,preview.next,reservation,preview.success);
+  }
   private async lockCurrentNote(file = this.currentFile()): Promise<void> {
     if (!file || !isMarkdown(file)) { new Notice("Aegis: open a Markdown note first."); return; }
     try {
@@ -137,9 +147,9 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const verified = await decryptText(envelope, password);
       if (verified !== parsed.body) throw new Error("Aegis verification failed before the file was changed.");
       const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-      const reservation = await reserveProtectionUse(this);
-      if (!reservation) return;
-      await this.applyProtectionChange(file, original, next, reservation, "Aegis: note locked.");
+      this.protectionPreview={file,original,next,eventId:jobId(),success:"Aegis: note locked."};
+      if(!this.settings.billingAccessToken) {new Notice("Protection preview: note body would be encrypted; ciphertext is masked. Keep this session open, sign in/verify in settings, then Retry preserved protection. Nothing was written.");return;}
+      await this.retryProtectionPreview();
     } catch (error) { notifyFailure(error); }
   }
 
@@ -166,9 +176,9 @@ export default class AegisNoteLockerPlugin extends Plugin {
       }
       const nextRecord: AegisRecord = { mode: "properties", properties: protectedValues };
       const next = serializeMarkdown({ ...updatedFrontmatter, [AEGIS_KEY]: nextRecord }, parsed.body);
-      const reservation = await reserveProtectionUse(this);
-      if (!reservation) return;
-      await this.applyProtectionChange(file, original, next, reservation, `Aegis: protected ${chosen.length} propert${chosen.length === 1 ? "y" : "ies"}.`);
+      this.protectionPreview={file,original,next,eventId:jobId(),success:`Aegis: protected ${chosen.length} properties.`};
+      if(!this.settings.billingAccessToken) {new Notice("Protection preview: selected properties would be encrypted; ciphertext is masked. Keep this session open, sign in/verify in settings, then Retry preserved protection. Nothing was written.");return;}
+      await this.retryProtectionPreview();
     } catch (error) { notifyFailure(error); }
   }
 
@@ -221,7 +231,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
           const envelope = await encryptText(parsed.body, password);
           if (await decryptText(envelope, password) !== parsed.body) throw new Error("verification failed");
           const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-          const reservation = await reserveProtectionUse(this);
+          const reservation = await reserveProtectionUse(this,original,next);
           if (!reservation) { progress.cancelled = true; break; }
           if (await this.applyProtectionChange(file, original, next, reservation, "", false)) {
             entries.push({ path: file.path, original, resulting: next });
@@ -244,11 +254,20 @@ export default class AegisNoteLockerPlugin extends Plugin {
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(original, password);
+      const backupResult=JSON.stringify({v:1,sourceHash:await sha256Hex(file.path),sourcePath:file.path,envelope},null,2);
+      const newProtection=!asRecord(parseMarkdown(original).frontmatter[AEGIS_KEY]);
+      const reservation=newProtection ? await reserveProtectionUse(this,original,backupResult) : null;
+      if(newProtection && !reservation)return;
+
       const folder = this.settings.backupFolder.replace(/^\/+|\/+$/g, "") || ".aegis-backups";
       if (!(await this.app.vault.adapter.exists(folder))) await this.app.vault.adapter.mkdir(folder);
-      const digest = (await sha256Hex(file.path)).slice(0, 16);
-      const backupPath = `${folder}/${digest}-${Date.now()}.aegis`;
-      await this.app.vault.adapter.write(backupPath, JSON.stringify({ v: 1, sourceHash: await sha256Hex(file.path), sourcePath: file.path, envelope }, null, 2));
+      const pathDigest = (await sha256Hex(file.path)).slice(0, 16);
+      const backupPath = `${folder}/${pathDigest}-${Date.now()}.aegis`;
+      if(reservation?.markWriting && !await reservation.markWriting([{path:backupPath,after:await digest(backupResult)}]))return;
+      await this.app.vault.adapter.write(backupPath, backupResult);
+      if(await this.app.vault.adapter.read(backupPath)!==backupResult)throw new Error("Backup write uncertain; reservation retained.");
+      const committed=await reservation?.commit();
+      if(committed?.kind==="pending")new Notice("Encrypted backup saved; its original reservation is pending reconciliation.");
       new Notice(`Aegis: encrypted backup written to ${backupPath}.`);
     } catch (error) { notifyFailure(error); }
   }
@@ -276,7 +295,8 @@ export default class AegisNoteLockerPlugin extends Plugin {
       await this.app.vault.adapter.write(tempPath, next);
       const staged = await this.app.vault.adapter.read(tempPath);
       if (staged !== next) throw new Error("Staged file verification failed.");
-      await this.app.vault.adapter.rename(tempPath, file.path);
+      await this.app.vault.process(file,latest=>{assertNoConflict(expected,latest);return staged;});
+      await this.app.vault.adapter.remove(tempPath);
       const committed = await this.app.vault.read(file);
       if (committed !== next) throw new Error("Committed file verification failed.");
       if (recordUndo) this.undoRecord = { createdAt: Date.now(), entries: [{ path: file.path, original: expected, resulting: next }] };
@@ -288,6 +308,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
 
   private async applyProtectionChange(file: TFile, original: string, next: string, reservation: UseReservation, successNotice: string, recordUndo = true): Promise<boolean> {
     try {
+      if(reservation.markWriting && !await reservation.markWriting([{path:file.path,before:await digest(original),after:await digest(next)}]))return true;
       await this.atomicChange(file, original, next, recordUndo);
       const result: ProtectionCommitResult = await reservation.commit();
       if (result.kind === "insufficient") {
