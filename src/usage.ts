@@ -1,4 +1,4 @@
-export const DAILY_FREE_USES = 3;
+export const DAILY_FREE_USES = 5;
 
 export interface DailyUsageState {
   freeUsesDay: string;
@@ -13,8 +13,7 @@ export function localDayKey(date = new Date()): string {
 }
 
 export function resetDailyUsageIfNeeded(state: DailyUsageState, date = new Date()): DailyUsageState {
-  const day = localDayKey(date);
-  return state.freeUsesDay === day ? state : { freeUsesDay: day, freeUsesUsed: 0 };
+  return state;
 }
 
 export function consumeFreeUse(state: DailyUsageState): DailyUsageState | null {
