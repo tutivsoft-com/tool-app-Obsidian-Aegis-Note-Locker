@@ -1,3 +1,7 @@
+# Aegis Note Locker
+
+Version: 3.3.39 — validated locally for publication; release pending.
+
 ## Current purchase behavior
 
 Purchase settings load the current public product catalog from Constance. Each available offer supplies its exact Paddle price ID, native-unit grant, unit name, and formatted amount. The client displays backend-provided amounts, enables only offers marked available, and submits the selected price ID through authenticated checkout with quantity one. Existing account balances and granted credits remain associated with the account.
@@ -30,10 +34,6 @@ Constance is the billing authority. Credit units remain app-specific: characters
 Constance provides authenticated account entitlements, usage balances, and available purchase offers.
 <!-- BILLING-CURRENT-2026-09-30:END -->
 
-# Aegis Note Locker
-
-Version: 3.3.38
-
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. Encryption and decryption run locally with no AI or cloud key escrow. Unlocking existing protected data works offline; creating a new protection requires a connected billing account and verified allowance. Billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
 
@@ -46,7 +46,6 @@ Aegis protects individual Markdown note bodies and selected top-level frontmatte
 - Keeps a volatile undo record for the last operation and supports an encrypted backup export into the vault.
 - Provides Lock All with progress and cancellation, a configurable session timeout, and an explicit Lock Now command.
 
-Install by placing `publish/main.js`, `publish/manifest.json`, and `publish/styles.css` in `.obsidian/plugins/aegis-note-locker/`, then enable Aegis in Obsidian. For development, run `npm install` and `npm run build`.
 
 ## Safe workflow
 
@@ -61,23 +60,12 @@ The note-encryption password and plaintext are never written to logs, clipboard,
 The plugin protects notes locally with authenticated encryption; keep a separate backup of important vault data.
 
 
-
-## Development
-
-```text
-npm install
-npm run check
-npm run build
-```
-
-The source is under `src/`; the `publish/` directory is the public release zone and contains a mirrored source tree plus the generated runtime artifact. Aegis has no AI integration. Current public prices and product information are loaded from Constance/Paddle. Historical identifiers are retained solely for existing purchase and pending-event compatibility.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 <!-- one-click-workflow:start -->
-## Workflow defaults (v3.3.38)
+## Workflow defaults (v3.3.39)
 
 Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
 <!-- one-click-workflow:end -->
@@ -87,3 +75,7 @@ Aegis uses the configured property list and applies the operation directly. Pass
 Account and billing controls appear at the top of settings. Select Connect with your email and password; verify the emailed link if requested, then Connect again. The settings page shows the current balance and provides balance refresh, sign-out, and purchase controls. Metered actions show the available balance and report the amount used with the remaining balance when the action completes.
 
 Billing account recovery: use **Forgot password?** in the plugin settings to open the Constance reset page. Signing out clears the local tokens and requests server session revocation.
+
+## Manual installation
+
+Download `main.js`, `manifest.json`, and `styles.css` from the matching published release and place them in `.obsidian/plugins/aegis-note-locker/`, then enable the plugin in Obsidian.
