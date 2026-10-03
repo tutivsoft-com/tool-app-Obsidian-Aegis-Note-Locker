@@ -168,11 +168,26 @@ __export(constance_account_exports, {
   validateBillingSession: () => validateBillingSession
 });
 function errorDetail(response, fallback) {
-  var _a, _b;
-  const detail = (_a = response.json) == null ? void 0 : _a.detail;
-  if ((detail == null ? void 0 : detail.code) === "invalid_credentials") return "Incorrect password. Use Forgot password? to reset it.";
-  if ((detail == null ? void 0 : detail.code) === "email_verification_required") return "Email not verified. Click the link in your email, then Connect again.";
-  return String((detail == null ? void 0 : detail.message) || (typeof detail === "string" ? detail : "") || ((_b = response.json) == null ? void 0 : _b.message) || fallback);
+  var _a;
+  const payload = ((_a = response.json) == null ? void 0 : _a.data) || response.json;
+  const detail = payload == null ? void 0 : payload.detail;
+  const code = (detail == null ? void 0 : detail.code) || (payload == null ? void 0 : payload.code);
+  if (code === "invalid_credentials") return "The email or password is incorrect. Use Forgot password? to reset it.";
+  if (code === "email_verification_required") return "Email not verified. Click the link in your email, then Connect again.";
+  return String((detail == null ? void 0 : detail.message) || (typeof detail === "string" ? detail : "") || (payload == null ? void 0 : payload.message) || fallback);
+}
+async function linkAuthenticatedInstallation(adapter, token) {
+  try {
+    await linkInstallation(adapter, token);
+  } catch (error) {
+    if (error instanceof ConstanceAccountError && error.status === 401) {
+      adapter.state.billingAccessToken = "";
+      adapter.state.billingRefreshToken = "";
+      adapter.state.billingAccountLinked = false;
+      await adapter.persist();
+    }
+    throw error;
+  }
 }
 async function authenticate(mode, email, password, installationId) {
   var _a, _b, _c;
@@ -185,7 +200,7 @@ async function authenticate(mode, email, password, installationId) {
     throw: false
   });
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(errorDetail(response, `Billing ${mode} failed (HTTP ${response.status})`));
+    throw new ConstanceAccountError(errorDetail(response, `Billing ${mode} failed (HTTP ${response.status})`), response.status);
   }
   const accessToken = String(((_a = response.json) == null ? void 0 : _a.access_token) || "");
   if (!accessToken && ((_b = response.json) == null ? void 0 : _b.verification_required)) {
@@ -282,7 +297,7 @@ async function linkInstallation(adapter, token) {
     throw: false
   });
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(errorDetail(response, `Installation link failed (HTTP ${response.status})`));
+    throw new ConstanceAccountError(errorDetail(response, `Installation link failed (HTTP ${response.status})`), response.status);
   }
 }
 async function signInBillingAccount(adapter, password, mode) {
@@ -307,12 +322,14 @@ async function signInBillingAccount(adapter, password, mode) {
     }
     throw error;
   }
-  await linkInstallation(adapter, tokens.accessToken);
   adapter.state.billingEmail = email;
   adapter.state.billingAccessToken = tokens.accessToken;
   adapter.state.billingRefreshToken = tokens.refreshToken;
-  adapter.state.billingAccountLinked = true;
+  adapter.state.billingAccountLinked = false;
   adapter.state.billingRegistrationPending = false;
+  await adapter.persist();
+  await linkAuthenticatedInstallation(adapter, tokens.accessToken);
+  adapter.state.billingAccountLinked = true;
   await adapter.persist();
   await adapter.syncBalance();
 }
@@ -477,13 +494,21 @@ function addBillingAccountSettings(containerEl, adapter) {
     }
   });
 }
-var import_obsidian3, CONSTANCE_ACCOUNT_BASE_URL, billingPersisters, billingRefreshes;
+var import_obsidian3, CONSTANCE_ACCOUNT_BASE_URL, ConstanceAccountError, billingPersisters, billingRefreshes;
 var init_constance_account = __esm({
   "publish/src/constance-account.ts"() {
     "use strict";
     init_billing_checkout();
     import_obsidian3 = require("obsidian");
     CONSTANCE_ACCOUNT_BASE_URL = "https://app.tutivsoft.com";
+    ConstanceAccountError = class extends Error {
+      constructor(message, status) {
+        super(message);
+        __publicField(this, "status");
+        this.name = "ConstanceAccountError";
+        this.status = status;
+      }
+    };
     billingPersisters = /* @__PURE__ */ new WeakMap();
     billingRefreshes = /* @__PURE__ */ new WeakMap();
   }
