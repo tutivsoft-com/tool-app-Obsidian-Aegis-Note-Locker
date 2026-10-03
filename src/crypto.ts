@@ -1,5 +1,6 @@
 export const AEGIS_FORMAT_VERSION = 1;
 export const DEFAULT_PBKDF2_ITERATIONS = 310_000;
+export const MAX_PBKDF2_ITERATIONS = 1_000_000;
 
 export interface AegisEnvelope {
   v: number;
@@ -62,8 +63,7 @@ export function validateEnvelope(value: unknown): asserts value is AegisEnvelope
     envelope.v !== AEGIS_FORMAT_VERSION ||
     envelope.alg !== "AES-256-GCM" ||
     envelope.kdf !== "PBKDF2-HMAC-SHA256" ||
-    typeof envelope.iterations !== "number" ||
-    envelope.iterations < 100_000 ||
+    !isSupportedPbkdf2Iterations(envelope.iterations) ||
     typeof envelope.salt !== "string" ||
     typeof envelope.iv !== "string" ||
     typeof envelope.ciphertext !== "string" ||
@@ -73,12 +73,22 @@ export function validateEnvelope(value: unknown): asserts value is AegisEnvelope
   }
 }
 
+function isSupportedPbkdf2Iterations(value: unknown): value is number {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 100_000 &&
+    value <= MAX_PBKDF2_ITERATIONS;
+}
+
 export async function encryptText(
   plaintext: string,
   password: string,
   iterations = DEFAULT_PBKDF2_ITERATIONS,
 ): Promise<AegisEnvelope> {
   if (!password) throw new Error("A password is required.");
+  if (!isSupportedPbkdf2Iterations(iterations)) {
+    throw new Error("Unsupported PBKDF2 iteration count.");
+  }
   const salt = randomBytes(16);
   const iv = randomBytes(12);
   const key = await deriveKey(password, salt, iterations);

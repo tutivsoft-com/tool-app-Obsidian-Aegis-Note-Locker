@@ -1,16 +1,15 @@
 # Aegis Note Locker
 
-Version: 3.3.39 — validated locally for publication; release pending.
+Version: 3.3.41
 
 ## Current purchase behavior
 
 Purchase settings load the current public product catalog from Constance. Each available offer supplies its exact Paddle price ID, native-unit grant, unit name, and formatted amount. The client displays backend-provided amounts, enables only offers marked available, and submits the selected price ID through authenticated checkout with quantity one. Existing account balances and granted credits remain associated with the account.
 
-<!-- SETTINGS-CURRENT-2026-09-30 -->
 
 ## Preview and lifetime allowance
 
-Guests see a bounded preview held only in memory. Keep the originating window open through registration, email verification and sign-in, then retry that exact result without regeneration. Guests cannot save, apply, export or queue useful output. Closing the preview or restarting loses unrevealed guest content.
+When a guest starts a protection action, Aegis keeps the original and proposed encrypted note text in one in-memory pending protection. Nothing is written until authorization succeeds. After connecting and verifying an account, use **Retry** to apply that same pending protection. The pending protection is stored only for the current plugin session; later protection actions replace it, and unloading the plugin clears it. Retrying reuses the same pending result and operation ID.
 
 Constance authorizes metered operations using this app’s native billing unit. The plugin checks current account entitlements and live purchase availability through Constance; each operation follows its documented reserve/commit or quote/confirmation flow.
 
@@ -21,9 +20,7 @@ Useful local writes follow durable reserve -> write -> verify -> commit. Full re
 ## Current settings
 
 Settings default to **Simple** and remember the selected mode. Simple contains everyday controls and account/billing. **Advanced** adds specialist preferences and diagnostics. This plugin runs locally without a managed AI provider. Account and encryption passwords remain necessary.
-<!-- SETTINGS-CURRENT-2026-09-30:END -->
 
-<!-- BILLING-CURRENT-2026-09-30 -->
 ## Current local account and billing behavior
 
 Use **Connect** with your email and password. A new account is registered; an existing account is authenticated. New users must follow the emailed verification link and Connect again. Incorrect passwords offer password recovery; passwords are never saved. Paid purchases and free allowances belong to the authenticated account, not a locally entered email or an editable cached balance. Reinstalling does not replenish the same account's allowance.
@@ -32,7 +29,6 @@ Constance is the billing authority. Credit units remain app-specific: characters
 
 
 Constance provides authenticated account entitlements, usage balances, and available purchase offers.
-<!-- BILLING-CURRENT-2026-09-30:END -->
 
 
 Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. Encryption and decryption run locally with no AI or cloud key escrow. Unlocking existing protected data works offline; creating a new protection requires a connected billing account and verified allowance. Billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
@@ -64,11 +60,9 @@ The plugin protects notes locally with authenticated encryption; keep a separate
 
 MIT. See [LICENSE](LICENSE).
 
-<!-- one-click-workflow:start -->
-## Workflow defaults (v3.3.39)
+## Workflow defaults (v3.3.41)
 
 Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
-<!-- one-click-workflow:end -->
 
 ## Account, billing, and credit feedback
 
