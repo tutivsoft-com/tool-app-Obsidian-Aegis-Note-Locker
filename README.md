@@ -1,21 +1,17 @@
 # Aegis Note Locker
 
-Version: 3.3.41
+Version: 3.3.47. Validated for publication; release pending.
 
 ## Current purchase behavior
 
 Purchase settings load the current public product catalog from Constance. Each available offer supplies its exact Paddle price ID, native-unit grant, unit name, and formatted amount. The client displays backend-provided amounts, enables only offers marked available, and submits the selected price ID through authenticated checkout with quantity one. Existing account balances and granted credits remain associated with the account.
 
 
-## Preview and lifetime allowance
+## Account lifetime allowance
 
-When a guest starts a protection action, Aegis keeps the original and proposed encrypted note text in one in-memory pending protection. Nothing is written until authorization succeeds. After connecting and verifying an account, use **Retry** to apply that same pending protection. The pending protection is stored only for the current plugin session; later protection actions replace it, and unloading the plugin clears it. Retrying reuses the same pending result and operation ID.
+5 protection_operations lifetime per account. One unit per completed protection operation.
 
-Constance authorizes metered operations using this app’s native billing unit. The plugin checks current account entitlements and live purchase availability through Constance; each operation follows its documented reserve/commit or quote/confirmation flow.
-
-One new protection is one native unit; free plaintext <=2,000 Unicode codepoints. Existing protected content decryption, restore/undo, and existing encrypted-result access remain free offline. New protection and new encrypted backup production require authorization. Encryption and passwords remain local.
-
-Useful local writes follow durable reserve -> write -> verify -> commit. Full reveal commits before showing complete content. Unknown writes retain their journal for status/output reconciliation; they are never blindly refunded or replayed. Billing sends account/install identity, native dimensions and source/result digests, never vault content, image bytes or encryption passwords.
+New operations use authenticated account billing with free units first, then purchased remainder. Native operations preserve reserve, write, verify and commit. No separate reveal or split-confirmation gate is required. Meaningful file/scope review remains.
 
 ## Current settings
 
@@ -60,7 +56,7 @@ The plugin protects notes locally with authenticated encryption; keep a separate
 
 MIT. See [LICENSE](LICENSE).
 
-## Workflow defaults (v3.3.41)
+## Workflow defaults
 
 Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
 

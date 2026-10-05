@@ -28,7 +28,7 @@ export class AegisSettingTab extends PluginSettingTab {
     const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
     const renderBalance = (): void => {
       const pending = this.plugin.settings.pendingProtectionCharges?.length ?? 0;
-      balanceEl.setText(`Protection uses remaining: ${remainingFreeUses(this.plugin.settings)} lifetime free remaining (server authoritative) + ${this.plugin.settings.purchasedUses.toLocaleString()} purchased${pending ? ` (${pending} charge pending)` : ""}`);
+      balanceEl.setText(!this.plugin.settings.billingAccountLinked || !this.plugin.settings.billingAccessToken ? "Create an account or sign in, then Connect to activate your lifetime free allowance and confirm your balance." : `Protection uses remaining: ${remainingFreeUses(this.plugin.settings)} lifetime free remaining (server authoritative) + ${this.plugin.settings.purchasedUses.toLocaleString()} purchased${pending ? ` (${pending} charge pending)` : ""}`);
     };
     renderBalance();
     addBillingAccountSettings(containerEl, { state: this.plugin.settings, appId: "aegis-note-locker", installationId: this.plugin.settings.constanceDeviceId, appVersion: this.plugin.manifest.version, persist: () => this.plugin.saveSettings(), syncBalance: () => syncBalance(this.plugin), refresh: () => this.display() });
