@@ -1,3 +1,4 @@
+import { diagnostics } from "./diagnostics";
 import { parseYaml, stringifyYaml } from "obsidian";
 
 export interface ParsedMarkdown {
@@ -30,7 +31,11 @@ export function topLevelPropertyNames(frontmatter: Record<string, unknown>): str
 }
 
 export function displayValue(value: unknown): string {
+const diagnosticAction1 = () => {
+
   if (Array.isArray(value)) return `[${value.length} item(s)]`;
   if (value && typeof value === "object") return "{object}";
   return String(value ?? "");
+
+}; return diagnostics?.run ? diagnostics.run("frontmatter.displayValue", diagnosticAction1) : diagnosticAction1();
 }

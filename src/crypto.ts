@@ -1,3 +1,4 @@
+import { diagnostics } from "./diagnostics";
 export const AEGIS_FORMAT_VERSION = 1;
 export const DEFAULT_PBKDF2_ITERATIONS = 310_000;
 export const MAX_PBKDF2_ITERATIONS = 1_000_000;
@@ -40,6 +41,9 @@ function randomBytes(length: number): Uint8Array {
 function source(bytes: Uint8Array): BufferSource { return bytes as unknown as BufferSource; }
 
 async function deriveKey(password: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
+const diagnosticEnd1 = diagnostics?.start?.("crypto.deriveKey") ?? (() => {});
+try {
+
   const material = await cryptoApi().subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -47,13 +51,15 @@ async function deriveKey(password: string, salt: Uint8Array, iterations: number)
     false,
     ["deriveKey"],
   );
-  return cryptoApi().subtle.deriveKey(
+  return await (cryptoApi().subtle.deriveKey(
     { name: "PBKDF2", salt: source(salt), iterations, hash: "SHA-256" },
     material,
     { name: "AES-GCM", length: 256 },
     false,
     ["encrypt", "decrypt"],
-  );
+  ));
+
+} catch (diagnosticError1) { diagnostics?.failure?.("crypto.deriveKey", diagnosticError1); throw diagnosticError1; } finally { diagnosticEnd1(); }
 }
 
 export function validateEnvelope(value: unknown): asserts value is AegisEnvelope {
@@ -85,6 +91,9 @@ export async function encryptText(
   password: string,
   iterations = DEFAULT_PBKDF2_ITERATIONS,
 ): Promise<AegisEnvelope> {
+const diagnosticEnd2 = diagnostics?.start?.("crypto.encryptText") ?? (() => {});
+try {
+
   if (!password) throw new Error("A password is required.");
   if (!isSupportedPbkdf2Iterations(iterations)) {
     throw new Error("Unsupported PBKDF2 iteration count.");
@@ -109,9 +118,14 @@ export async function encryptText(
     ciphertext: bytesToBase64(encryptedBytes.slice(0, -tagLength)),
     tag: bytesToBase64(encryptedBytes.slice(-tagLength)),
   };
+
+} catch (diagnosticError2) { diagnostics?.failure?.("crypto.encryptText", diagnosticError2); throw diagnosticError2; } finally { diagnosticEnd2(); }
 }
 
 export async function decryptText(envelope: AegisEnvelope, password: string): Promise<string> {
+const diagnosticEnd3 = diagnostics?.start?.("crypto.decryptText") ?? (() => {});
+try {
+
   validateEnvelope(envelope);
   if (!password) throw new Error("A password is required.");
   const key = await deriveKey(password, base64ToBytes(envelope.salt), envelope.iterations);
@@ -125,12 +139,19 @@ export async function decryptText(envelope: AegisEnvelope, password: string): Pr
     key,
     source(ciphertextAndTag),
   );
-  return new TextDecoder().decode(plaintext);
+  return await (new TextDecoder().decode(plaintext));
+
+} catch (diagnosticError3) { diagnostics?.failure?.("crypto.decryptText", diagnosticError3); throw diagnosticError3; } finally { diagnosticEnd3(); }
 }
 
 export async function sha256Hex(value: string): Promise<string> {
+const diagnosticEnd4 = diagnostics?.start?.("crypto.sha256Hex") ?? (() => {});
+try {
+
   const digest = await cryptoApi().subtle.digest("SHA-256", source(new TextEncoder().encode(value)));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return await (Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""));
+
+} catch (diagnosticError4) { diagnostics?.failure?.("crypto.sha256Hex", diagnosticError4); throw diagnosticError4; } finally { diagnosticEnd4(); }
 }
 
 export function clearBytes(value: Uint8Array | undefined): void {

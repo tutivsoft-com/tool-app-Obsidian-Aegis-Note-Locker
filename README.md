@@ -1,71 +1,28 @@
 # Aegis Note Locker
 
-Version: 3.3.47. Validated for publication; release pending.
+Protect a note body or selected top-level frontmatter values locally using password-derived authenticated encryption.
 
-## Current purchase behavior
+Current version: **3.3.57**.
 
-Purchase settings load the current public product catalog from Constance. Each available offer supplies its exact Paddle price ID, native-unit grant, unit name, and formatted amount. The client displays backend-provided amounts, enables only offers marked available, and submits the selected price ID through authenticated checkout with quantity one. Existing account balances and granted credits remain associated with the account.
+## First use
 
+Enable the plugin and use its settings page. Simple is the default settings mode; Advanced exposes optional configuration. Set the session password in plugin settings, open a Markdown note, then run Lock current note or Lock selected frontmatter properties.
 
-## Account lifetime allowance
+AES-256-GCM encryption uses PBKDF2-derived keys, random salts and nonces, and a versioned envelope. Passwords stay in session memory. Optional review defaults off. Writes verify source and output; the last operation has volatile rollback data. Lock now clears the cached session rather than re-encrypting plaintext notes already unlocked on disk.
 
-5 protection_operations lifetime per account. One unit per completed protection operation.
+## Account and processing
 
-New operations use authenticated account billing with free units first, then purchased remainder. Native operations preserve reserve, write, verify and commit. No separate reveal or split-confirmation gate is required. Meaningful file/scope review remains.
+Processing is local. This plugin has no AI provider integration. Constance handles account and billing operations.
 
-## Current settings
+One completed protection operation consumes one unit. New protection uses durable account authorization and verified-write recovery. Unlock, viewing, rollback and backup of already protected content do not create a new protection debit; exporting an unprotected note creates protection.
 
-Settings default to **Simple** and remember the selected mode. Simple contains everyday controls and account/billing. **Advanced** adds specialist preferences and diagnostics. This plugin runs locally without a managed AI provider. Account and encryption passwords remain necessary.
+Connect the existing Constance account in settings; registration can require email verification before signing in again. Billing account passwords are sent for authentication and are not persisted. Access/refresh session data and a stable installation identity are saved locally. Account free usage and purchased balance are determined by Constance; cached values and checkout return URLs do not create entitlement. Catalog displays current formatted names, prices, availability and exact price IDs. Unknown usage and checkout results retain their original identities for recovery.
 
-## Current local account and billing behavior
+## Diagnostics
 
-Use **Connect** with your email and password. A new account is registered; an existing account is authenticated. New users must follow the emailed verification link and Connect again. Incorrect passwords offer password recovery; passwords are never saved. Paid purchases and free allowances belong to the authenticated account, not a locally entered email or an editable cached balance. Reinstalling does not replenish the same account's allowance.
+Help is available in settings and through Open documentation. Open plugin settings and Copy full debug log are command-palette fallbacks. Debug logging defaults off for a new installation; failures and full Error objects/stacks still appear in the local developer console. Timed information is enabled by the debug preference. The copyable diagnostic buffer keeps at most 1,000 summarized events and excludes raw error text, stacks, note text, paths and credentials. Full console exceptions can contain whatever the failed operation placed in its error. Logs are not uploaded automatically.
 
-Constance is the billing authority. Credit units remain app-specific: characters, OCR pages, searches, conversions, repair/protection batches, or captures. Checkout return URLs and cached balances never grant credits. Payment fulfillment comes from the server’s verified Paddle webhook, and balances refresh from authenticated entitlements. Unknown usage or checkout results reuse the persisted operation ID; they must not create a new debit or alternative checkout.
-
-
-Constance provides authenticated account entitlements, usage balances, and available purchase offers.
+## Documentation
 
 
-Aegis protects individual Markdown note bodies and selected top-level frontmatter properties with local, authenticated encryption. Encryption and decryption run locally with no AI or cloud key escrow. Unlocking existing protected data works offline; creating a new protection requires a connected billing account and verified allowance. Billing uses the current authenticated TutivSoft Constance installation/account flow for balance, checkout, and one-use charge events.
-
-## What the MVP does
-
-- Locks and unlocks the current note from the command palette, ribbon, editor menu, or file menu.
-- Protects selected top-level frontmatter properties while leaving their names and other properties readable.
-- Uses AES-256-GCM with a unique random salt and nonce for each encrypted record and versioned PBKDF2-HMAC-SHA-256 key derivation.
-- Applies Lock, Unlock, and Backup directly with configured session defaults; optional review windows are off by default. It verifies decryption before replacement, checks for sync conflicts, and stages writes through a temporary file.
-- Keeps a volatile undo record for the last operation and supports an encrypted backup export into the vault.
-- Provides Lock All with progress and cancellation, a configurable session timeout, and an explicit Lock Now command.
-
-
-## Safe workflow
-
-Set the session password and default protected properties in plugin settings. The password stays in memory only. Lock, Unlock, and Backup then run directly; **Review before applying** is an optional settings toggle. Aegis performs a test decrypt and refuses stale-file writes. **Aegis Note Locker: Roll back last operation** is available while the plugin session still holds its in-memory undo record.
-
-Locked note bodies are replaced by a visible placeholder; encrypted values are ciphertext in the vault file. This means normal Markdown search, property indexing, backlinks, embeds, and third-party plugins cannot read protected content while locked. File paths and unprotected frontmatter remain available. Links that live inside a locked body are not available to Obsidian's graph until the note is unlocked; links kept in unprotected frontmatter remain visible where Obsidian supports them.
-
-## Security and privacy
-
-The note-encryption password and plaintext are never written to logs, clipboard, network requests, or plugin settings. A separate billing account password is submitted only to authenticate with Constance; it is not retained as a password. Rotating billing session tokens are stored in Obsidian plugin data. Billing requests contain account/app identifiers, checkout metadata, and credit event IDs, never note paths, encrypted envelopes, encryption passwords, or protected content. Payment fulfillment remains webhook-authoritative and the plugin refreshes entitlements by polling.
-
-The plugin protects notes locally with authenticated encryption; keep a separate backup of important vault data.
-
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-## Workflow defaults
-
-Aegis uses the configured property list and applies the operation directly. Password setup is done once per session in Settings; before-and-after review is optional and off by default.
-
-## Account, billing, and credit feedback
-
-Account and billing controls appear at the top of settings. Select Connect with your email and password; verify the emailed link if requested, then Connect again. The settings page shows the current balance and provides balance refresh, sign-out, and purchase controls. Metered actions show the available balance and report the amount used with the remaining balance when the action completes.
-
-Billing account recovery: use **Forgot password?** in the plugin settings to open the Constance reset page. Signing out clears the local tokens and requests server session revocation.
-
-## Manual installation
-
-Download `main.js`, `manifest.json`, and `styles.css` from the matching published release and place them in `.obsidian/plugins/aegis-note-locker/`, then enable the plugin in Obsidian.
+License terms are in LICENSE.

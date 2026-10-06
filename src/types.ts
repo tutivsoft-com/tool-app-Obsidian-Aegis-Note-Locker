@@ -2,6 +2,7 @@ import type { AegisEnvelope } from "./crypto";
 
 export interface AegisSettings {
   settingsMode: "simple" | "advanced";
+  debugLogging?: boolean;
   sessionTimeoutMinutes: number;
   backupFolder: string;
   showStatusBar: boolean;
@@ -23,6 +24,7 @@ export interface AegisSettings {
 
 export const DEFAULT_SETTINGS: AegisSettings = {
   settingsMode: "simple",
+  debugLogging: false,
   sessionTimeoutMinutes: 15,
   backupFolder: ".aegis-backups",
   showStatusBar: true,
