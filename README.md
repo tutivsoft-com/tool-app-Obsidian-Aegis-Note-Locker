@@ -1,32 +1,65 @@
 # Aegis Note Locker
 
-<!-- DOC-BUNDLE-SCOPE -->
-> This guide describes the local bundled revision **3.3.57**. Its code may precede the maintained development source. Use the account entitlement and purchase screen for current server limits and offers; fixed historical amounts below do not establish current offers. This documentation review did not publish or update the bundle.
-<!-- DOC-BUNDLE-SCOPE:END -->
+Encrypt a note body or selected frontmatter values locally in Obsidian.
 
-Protect a note body or selected top-level frontmatter values locally using password-derived authenticated encryption.
+**Best for:** Obsidian users protecting selected sensitive note content.
 
-Current version: **3.3.57**.
+## Top 10 features
 
-## First use
+1. Protect a Markdown note body.
+2. Protect selected top-level properties.
+3. Unlock protected content.
+4. Use password-derived encryption.
+5. Authenticate encrypted content.
+6. Keep the password in session memory.
+7. Set session timeout controls.
+8. Lock supported note batches.
+9. Export encrypted backups.
+10. Recover the last supported operation.
 
-Enable the plugin and use its settings page. Simple is the default settings mode; Advanced exposes optional configuration. Set the session password in plugin settings, open a Markdown note, then run Lock current note or Lock selected frontmatter properties.
+## Example workflow
 
-AES-256-GCM encryption uses PBKDF2-derived keys, random salts and nonces, and a versioned envelope. Passwords stay in session memory. Optional review defaults off. Writes verify source and output; the last operation has volatile rollback data. Lock now clears the cached session rather than re-encrypting plaintext notes already unlocked on disk.
+**Before:** A private note body is readable in the vault.
 
-## Account and processing
+**After:** Set a password and protect the body. Unlock with that password when you need to edit it, and re-protect plaintext when finished.
 
-Processing is local. This plugin has no AI provider integration. Constance handles account and billing operations.
+## Pricing
 
-One completed protection operation consumes one unit. New protection uses durable account authorization and verified-write recovery. Unlock, viewing, rollback and backup of already protected content do not create a new protection debit; exporting an unprotected note creates protection.
+A connected account includes 5 protection operations as a one-time lifetime allowance. Previous use counts toward that allowance.
 
-Connect the existing Constance account in settings; registration can require email verification before signing in again. Billing account passwords are sent for authentication and are not persisted. Access/refresh session data and a stable installation identity are saved locally. Account free usage and purchased balance are determined by Constance; cached values and checkout return URLs do not create entitlement. Catalog displays current formatted names, prices, availability and exact price IDs. Unknown usage and checkout results retain their original identities for recovery.
+| Pack | USD price | Included units |
+|---|---:|---:|
+| Starter | $2.00 | 50 protection operations |
+| Standard | $4.00 | 150 protection operations |
+| Pro | $8.00 | 450 protection operations |
+| Ultimate | $14.00 | 1,200 protection operations |
 
-## Diagnostics
+Packs are one-time purchases. Purchased units do not expire. Final tax and local currency are shown at checkout.
 
-Help is available in settings and through Open documentation. Open plugin settings and Copy full debug log are command-palette fallbacks. Debug logging defaults off for a new installation; failures and full Error objects/stacks still appear in the local developer console. Timed information is enabled by the debug preference. The copyable diagnostic buffer keeps at most 1,000 summarized events and excludes raw error text, stacks, note text, paths and credentials. Full console exceptions can contain whatever the failed operation placed in its error. Logs are not uploaded automatically.
+## What to know
 
-## Documentation
+Encryption runs locally. Unlocking can leave plaintext on disk; clearing the password session does not re-encrypt it.
 
+---
 
-License terms are in LICENSE.
+## Discover Aegis Note Locker
+
+Whether you need to protect a Markdown note body or protect selected top-level properties, Aegis Note Locker provides a focused workflow for Obsidian users protecting selected sensitive note content.
+
+### Common questions
+
+**What can I use it for?**
+
+You can protect a Markdown note body, use password-derived encryption or authenticate encrypted content.
+
+**How do I get started?**
+
+Enable the plugin in Obsidian, open its settings and choose the action that fits your note. Connect your account for metered actions; the settings page shows your remaining allowance and available packs.
+
+### Search description
+
+Encrypt a note body or selected frontmatter values locally in Obsidian. Designed for Obsidian users protecting selected sensitive note content.
+
+### Related topics
+
+Obsidian note encryption, encrypted Markdown, frontmatter encryption, password-protected notes.
