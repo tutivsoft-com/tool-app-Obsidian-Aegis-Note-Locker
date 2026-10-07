@@ -1,5 +1,9 @@
 # Aegis Note Locker
 
+<!-- DOC-BUNDLE-SCOPE -->
+> This guide describes the local bundled revision **3.3.57**. Its code may precede the maintained development source. Use the account entitlement and purchase screen for current server limits and offers; fixed historical amounts below do not establish current offers. This documentation review did not publish or update the bundle.
+<!-- DOC-BUNDLE-SCOPE:END -->
+
 Protect a note body or selected top-level frontmatter values locally using password-derived authenticated encryption.
 
 Current version: **3.3.57**.
