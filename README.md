@@ -63,3 +63,13 @@ Encrypt a note body or selected frontmatter values locally in Obsidian. Designed
 ### Related topics
 
 Obsidian note encryption, encrypted Markdown, frontmatter encryption, password-protected notes.
+
+<!-- PORTFOLIO-METADATA:START -->
+## Repository metadata
+
+Current source version: **3.3.59** (2026-10-16).
+
+[Architecture](architecture.md) · [AI provenance](ai_model.md) · [History](HISTORY.md) · [Contributors](CONTRIBUTORS.md) · [Manifest](rahul_manifest.yaml).
+
+This maintenance update synchronizes source version metadata and excludes generated junk. Build, runtime, store and deployment verification are separate.
+<!-- PORTFOLIO-METADATA:END -->
