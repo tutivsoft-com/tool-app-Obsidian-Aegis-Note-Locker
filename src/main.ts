@@ -1,3 +1,4 @@
+import { initializeMatomo } from "./matomo-plugin";
 import { selectedFiles, markdownFile, registerSelectionAction } from "./selection-scope";
 import { diagnostics } from "./diagnostics";
 import { Menu, Notice, Plugin, TFile, type Editor, type TAbstractFile } from "obsidian";
@@ -34,6 +35,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
   private selectionInFlight = false;
 
   async onload(): Promise<void> {
+    initializeMatomo(this);
 let diagnosticStartupEnd: () => void = () => {};
 
 const diagnosticEnd1 = diagnostics?.start?.("main.onload") ?? (() => {});

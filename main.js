@@ -1,7 +1,9 @@
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __esm = (fn, res, err) => function __init() {
@@ -10,6 +12,13 @@ var __esm = (fn, res, err) => function __init() {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
   } catch (e) {
     throw err = [e], e;
+  }
+};
+var __commonJS = (cb, mod) => function __require() {
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
   }
 };
 var __export = (target, all) => {
@@ -24,8 +33,111 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+// publish/src/matomo-client.js
+var require_matomo_client = __commonJS({
+  "publish/src/matomo-client.js"(exports, module2) {
+    "use strict";
+    (function(root, factory) {
+      const api2 = factory();
+      if (typeof module2 === "object" && module2.exports) module2.exports = api2;
+      else root.TutivSoftMatomo = api2;
+    })(globalThis, function() {
+      "use strict";
+      const actions = { feature: ["started", "completed", "failed"], onboarding: ["started", "completed"], ai: ["completed", "failed"], billing: ["checkout_opened"], error: ["operation_failed"], game: ["level_started", "level_completed", "level_failed"] };
+      class MatomoClient2 {
+        constructor(config, dependencies = {}) {
+          this.config = config;
+          this.enabled = config.enabled !== false;
+          this.storage = dependencies.storage;
+          this.send = dependencies.send;
+          this.visitor = "";
+          this.lastScreen = "";
+          this.busy = false;
+          this.initializing = null;
+          this.transportPending = false;
+        }
+        get configured() {
+          return this.enabled && Number.isInteger(this.config.siteId) && this.config.siteId > 1 && /^[a-z][a-z0-9_]{0,63}$/.test(this.config.product);
+        }
+        initialize() {
+          if (!this.initializing) this.initializing = this.initializeOnce();
+          return this.initializing;
+        }
+        async initializeOnce() {
+          var _a, _b;
+          if (!this.configured) return;
+          try {
+            const key = "matomo.v1." + this.config.product;
+            this.visitor = await ((_a = this.storage) == null ? void 0 : _a.get(key)) || "";
+            if (!/^[a-f0-9]{16}$/.test(this.visitor)) {
+              const bytes = new Uint8Array(8);
+              crypto.getRandomValues(bytes);
+              this.visitor = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+              await ((_b = this.storage) == null ? void 0 : _b.set(key, this.visitor));
+            }
+          } catch (_) {
+            this.enabled = false;
+          }
+        }
+        screen(name) {
+          if (!this.configured || !this.visitor) return Promise.resolve();
+          if (!(this.config.screens || ["home", "settings", "login", "onboarding"]).includes(name) || name === this.lastScreen) return Promise.resolve();
+          this.lastScreen = name;
+          return this.track({ action_name: name }, name);
+        }
+        event(category, action, name, value) {
+          if (!Object.prototype.hasOwnProperty.call(actions, category) || !actions[category].includes(action) || !(this.config.features || []).includes(name)) return Promise.resolve();
+          if (value !== void 0 && (!Number.isFinite(value) || value < 0 || value > 864e5)) return Promise.resolve();
+          return this.track({ e_c: category, e_a: action, e_n: name, ...value === void 0 ? {} : { e_v: String(value) } }, "feature");
+        }
+        async track(fields, screen) {
+          if (!this.configured || !this.visitor || this.busy || this.transportPending) return;
+          this.busy = true;
+          const body = new URLSearchParams({ idsite: String(this.config.siteId), rec: "1", apiv: "1", _id: this.visitor, url: "https://tutivsoft.com/analytics/apps/" + this.config.product + "/" + (this.config.platform || "web") + "/" + screen, ...fields }).toString();
+          const controller = new AbortController();
+          let timer;
+          try {
+            let request;
+            if (this.send) {
+              this.transportPending = true;
+              request = Promise.resolve().then(() => this.send(body));
+              request = request.then(() => {
+                this.transportPending = false;
+              }, () => {
+                this.transportPending = false;
+              });
+            } else request = fetch("https://atcdn.cyou/matomo.php", { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" }, credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: controller.signal });
+            await Promise.race([request, new Promise((resolve) => {
+              timer = setTimeout(() => {
+                controller.abort();
+                resolve();
+              }, 5e3);
+            })]);
+          } catch (_) {
+          } finally {
+            clearTimeout(timer);
+            this.busy = false;
+          }
+        }
+      }
+      function localStorageAdapter2(storage) {
+        return { get: async (k) => storage.getItem(k), set: async (k, v) => storage.setItem(k, v) };
+      }
+      return { MatomoClient: MatomoClient2, localStorageAdapter: localStorageAdapter2 };
+    });
+  }
+});
 
 // publish/src/diagnostics.ts
 function isPromise(value) {
@@ -326,7 +438,7 @@ function renderAccountGuidance(section, host) {
     details.createEl("p", { text: "Connect your account to load your free and purchased credits. Free credits are used first, then purchased credits. Your balance stays with your account after reinstalling. Current quantities and prices are shown in Account." });
     void diagnostics.guard("account-guidance.background_1", () => {
       var _a2, _b, _c;
-      return ((_c = (_b = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b.call(_a2, "network.account-guidance.renderAccountGuidance", import_obsidian3.requestUrl, { url: `https://app.tutivsoft.com/api/v1/billing/policy?app_id=${encodeURIComponent(host.appId)}`, method: "GET", throw: false })) != null ? _c : (0, import_obsidian3.requestUrl)({ url: `https://app.tutivsoft.com/api/v1/billing/policy?app_id=${encodeURIComponent(host.appId)}`, method: "GET", throw: false })).then((response) => {
+      return ((_c = (_b = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b.call(_a2, "network.account-guidance.renderAccountGuidance", import_obsidian4.requestUrl, { url: `https://app.tutivsoft.com/api/v1/billing/policy?app_id=${encodeURIComponent(host.appId)}`, method: "GET", throw: false })) != null ? _c : (0, import_obsidian4.requestUrl)({ url: `https://app.tutivsoft.com/api/v1/billing/policy?app_id=${encodeURIComponent(host.appId)}`, method: "GET", throw: false })).then((response) => {
         var _a3, _b2;
         const p = response.status === 200 ? (_b2 = (_a3 = response.json) == null ? void 0 : _a3.data) == null ? void 0 : _b2.account_free_usage : null;
         if (!p || !Number.isFinite(p.allowance) || p.allowance < 0) return;
@@ -339,12 +451,12 @@ function renderAccountGuidance(section, host) {
   };
   return ((_a = diagnostics) == null ? void 0 : _a.run) ? diagnostics.run("account-guidance.renderAccountGuidance", diagnosticAction1) : diagnosticAction1();
 }
-var import_obsidian3;
+var import_obsidian4;
 var init_account_guidance = __esm({
   "publish/src/account-guidance.ts"() {
     "use strict";
     init_diagnostics();
-    import_obsidian3 = require("obsidian");
+    import_obsidian4 = require("obsidian");
   }
 });
 
@@ -362,13 +474,13 @@ async function send(host, path, method, body, key) {
   try {
     const request = () => {
       var _a2, _b2, _c2;
-      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.billing-checkout.send", import_obsidian4.requestUrl, {
+      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.billing-checkout.send", import_obsidian5.requestUrl, {
         url: `https://app.tutivsoft.com/api/v1/billing/${path}`,
         method,
         throw: false,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${host.state.billingAccessToken}`, ...key ? { "Idempotency-Key": key } : {} },
         ...body ? { body: JSON.stringify(body) } : {}
-      })) != null ? _c2 : (0, import_obsidian4.requestUrl)({
+      })) != null ? _c2 : (0, import_obsidian5.requestUrl)({
         url: `https://app.tutivsoft.com/api/v1/billing/${path}`,
         method,
         throw: false,
@@ -455,12 +567,12 @@ async function startAccountCheckout(host, selection) {
       });
       try {
         if (!host.state.billingAccountLinked) {
-          new import_obsidian4.Notice("Connect your account first.");
+          new import_obsidian5.Notice("Connect your account first.");
           return;
         }
         const saved = host.state.pendingAccountCheckout;
         if (saved && (selection.priceId && saved.priceId !== selection.priceId || selection.plan && saved.plan !== selection.plan || saved.email !== host.state.billingEmail)) {
-          new import_obsidian4.Notice("A purchase is pending. Its status will refresh automatically before you can start another.");
+          new import_obsidian5.Notice("A purchase is pending. Its status will refresh automatically before you can start another.");
           resumeAccountCheckout(host);
           return;
         }
@@ -474,20 +586,20 @@ async function startAccountCheckout(host, selection) {
           if (host.state.pendingAccountCheckout !== pending || pending.email !== host.state.billingEmail) return;
           const checkout = (_d2 = response.json) == null ? void 0 : _d2.data;
           if (response.status < 200 || response.status >= 300 || !(checkout == null ? void 0 : checkout.checkout_id)) {
-            new import_obsidian4.Notice("Checkout could not be confirmed. Retry the same purchase to recover it safely.");
+            new import_obsidian5.Notice("Checkout could not be confirmed. Retry the same purchase to recover it safely.");
             return;
           }
           pending.checkoutId = String(checkout.checkout_id);
           await host.persist();
           if (typeof checkout.checkout_url === "string" && checkout.checkout_url) {
             window.open(checkout.checkout_url, "_blank", "noopener");
-            new import_obsidian4.Notice("Complete payment in your browser. Your balance will update automatically.");
+            new import_obsidian5.Notice("Complete payment in your browser. Your balance will update automatically.");
           } else {
-            new import_obsidian4.Notice("Checkout is still being confirmed. Its status will refresh automatically.");
+            new import_obsidian5.Notice("Checkout is still being confirmed. Its status will refresh automatically.");
           }
         } catch (caughtError3) {
           diagnostics.failure("billing-checkout.caught_4", caughtError3);
-          new import_obsidian4.Notice("Checkout could not be confirmed. Retry the same purchase to recover it safely.");
+          new import_obsidian5.Notice("Checkout could not be confirmed. Retry the same purchase to recover it safely.");
         } finally {
           resumeAccountCheckout(host);
         }
@@ -517,12 +629,12 @@ function openAccountCheckoutByPrice(host, priceId) {
 function openAccountCheckout(host, plan) {
   return startAccountCheckout(host, { plan });
 }
-var import_obsidian4, running, timers;
+var import_obsidian5, running, timers;
 var init_billing_checkout = __esm({
   "publish/src/billing-checkout.ts"() {
     "use strict";
     init_diagnostics();
-    import_obsidian4 = require("obsidian");
+    import_obsidian5 = require("obsidian");
     running = /* @__PURE__ */ new WeakMap();
     timers = /* @__PURE__ */ new WeakMap();
   }
@@ -542,6 +654,27 @@ __export(constance_account_exports, {
   spendAccountCredits: () => spendAccountCredits,
   validateBillingSession: () => validateBillingSession
 });
+async function connectWithinDeadline(state, operation, refresh) {
+  if (pendingConnections.has(state)) throw new Error("account_connection_pending");
+  pendingConnections.add(state);
+  const request = Promise.resolve().then(operation);
+  const finish = () => {
+    pendingConnections.delete(state);
+    try {
+      refresh();
+    } catch (_) {
+    }
+  };
+  request.then(finish, finish);
+  let timer;
+  try {
+    await Promise.race([request, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("account_connection_pending")), 15e3);
+    })]);
+  } finally {
+    if (timer !== void 0) clearTimeout(timer);
+  }
+}
 function errorDetail(response, fallback) {
   var _a;
   const payload = ((_a = response.json) == null ? void 0 : _a.data) || response.json;
@@ -581,13 +714,13 @@ async function authenticate(mode, email, password, installationId) {
   });
   try {
     const body = mode !== "login" ? { email, password, external_customer_id: installationId } : { email, password };
-    const response = await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.authenticate", import_obsidian5.requestUrl, {
+    const response = await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.authenticate", import_obsidian6.requestUrl, {
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/${mode}`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       throw: false
-    })) != null ? _f : (0, import_obsidian5.requestUrl)({
+    })) != null ? _f : (0, import_obsidian6.requestUrl)({
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/${mode}`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -639,13 +772,13 @@ async function refreshBillingSession(state, persist) {
       });
       try {
         try {
-          const response = await ((_f = (_e2 = (_d2 = diagnostics) == null ? void 0 : _d2.request) == null ? void 0 : _e2.call(_d2, "network.constance-account.refreshBillingSession", import_obsidian5.requestUrl, {
+          const response = await ((_f = (_e2 = (_d2 = diagnostics) == null ? void 0 : _d2.request) == null ? void 0 : _e2.call(_d2, "network.constance-account.refreshBillingSession", import_obsidian6.requestUrl, {
             url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/refresh`,
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ refresh_token: original }),
             throw: false
-          })) != null ? _f : (0, import_obsidian5.requestUrl)({
+          })) != null ? _f : (0, import_obsidian6.requestUrl)({
             url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/refresh`,
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -699,14 +832,14 @@ async function requestAuthenticatedBilling(state, options) {
   try {
     const send2 = () => {
       var _a2, _b2, _c2;
-      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.constance-account.requestAuthenticatedBilling", import_obsidian5.requestUrl, {
+      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.constance-account.requestAuthenticatedBilling", import_obsidian6.requestUrl, {
         ...options,
         headers: {
           ...options.headers || {},
           ...state.billingAccessToken ? { Authorization: `Bearer ${state.billingAccessToken}` } : {}
         },
         throw: false
-      })) != null ? _c2 : (0, import_obsidian5.requestUrl)({
+      })) != null ? _c2 : (0, import_obsidian6.requestUrl)({
         ...options,
         headers: {
           ...options.headers || {},
@@ -734,7 +867,7 @@ async function linkInstallation(adapter, token) {
   const diagnosticEnd6 = (_c = (_b = (_a = diagnostics) == null ? void 0 : _a.start) == null ? void 0 : _b.call(_a, "constance-account.linkInstallation")) != null ? _c : (() => {
   });
   try {
-    const response = await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.linkInstallation", import_obsidian5.requestUrl, {
+    const response = await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.linkInstallation", import_obsidian6.requestUrl, {
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/billing/installations/link`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -746,7 +879,7 @@ async function linkInstallation(adapter, token) {
         app_version: adapter.appVersion || void 0
       }),
       throw: false
-    })) != null ? _f : (0, import_obsidian5.requestUrl)({
+    })) != null ? _f : (0, import_obsidian6.requestUrl)({
       url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/billing/installations/link`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -822,7 +955,7 @@ async function signOutBillingAccount(adapter) {
     const accessToken = adapter.state.billingAccessToken;
     try {
       if (refreshToken || accessToken) {
-        await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.signOutBillingAccount", import_obsidian5.requestUrl, {
+        await ((_f = (_e = (_d = diagnostics) == null ? void 0 : _d.request) == null ? void 0 : _e.call(_d, "network.constance-account.signOutBillingAccount", import_obsidian6.requestUrl, {
           url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/logout`,
           method: "POST",
           headers: {
@@ -831,7 +964,7 @@ async function signOutBillingAccount(adapter) {
           },
           body: JSON.stringify({ refresh_token: refreshToken || void 0 }),
           throw: false
-        })) != null ? _f : (0, import_obsidian5.requestUrl)({
+        })) != null ? _f : (0, import_obsidian6.requestUrl)({
           url: `${CONSTANCE_ACCOUNT_BASE_URL}/api/v1/auth/logout`,
           method: "POST",
           headers: {
@@ -907,8 +1040,8 @@ async function claimAccountFreeUsage(state, appId, installationId, eventId, amou
       }
       if (response.status < 200 || response.status >= 300) return { kind: "error" };
       const remaining = Math.max(0, Number((_e = (_d = response.json) == null ? void 0 : _d.data) == null ? void 0 : _e.remaining) || 0);
-      new import_obsidian5.Notice(`Credit balance before this task: ${(remaining + amount).toLocaleString()} free credits.`);
-      new import_obsidian5.Notice(`Task used ${amount.toLocaleString()} credits. Balance remaining: ${remaining.toLocaleString()} free credits.`);
+      new import_obsidian6.Notice(`Credit balance before this task: ${(remaining + amount).toLocaleString()} free credits.`);
+      new import_obsidian6.Notice(`Task used ${amount.toLocaleString()} credits. Balance remaining: ${remaining.toLocaleString()} free credits.`);
       return { kind: "ok", remaining };
     } catch (error) {
       diagnostics.failure("constance-account.caught_extra_2", error);
@@ -944,8 +1077,8 @@ async function spendAccountCredits(state, appId, installationId, eventId, amount
       const balance = Number((_f = (_e = (_d = response.json) == null ? void 0 : _d.data) == null ? void 0 : _e.credits) == null ? void 0 : _f.balance);
       if (!Number.isFinite(balance)) return { kind: "error" };
       const remaining = Math.max(0, balance);
-      new import_obsidian5.Notice(`Credit balance before this task: ${(remaining + amount).toLocaleString()} purchased credits.`);
-      new import_obsidian5.Notice(`Task used ${amount.toLocaleString()} credits. Balance remaining: ${remaining.toLocaleString()} purchased credits.`);
+      new import_obsidian6.Notice(`Credit balance before this task: ${(remaining + amount).toLocaleString()} purchased credits.`);
+      new import_obsidian6.Notice(`Task used ${amount.toLocaleString()} credits. Balance remaining: ${remaining.toLocaleString()} purchased credits.`);
       return { kind: "ok", balance: remaining };
     } catch (error) {
       diagnostics.failure("constance-account.caught_extra_3", error);
@@ -972,7 +1105,7 @@ function addBillingAccountSettings(containerEl, adapter) {
     cls: "constance-account-status",
     text: adapter.state.billingAccountLinked && adapter.state.billingAccessToken && numericBalances.length ? `${accountStatus} Balance \u2014 ${numericBalances.join("; ")}` : accountStatus
   });
-  new import_obsidian5.Setting(section).setName("Email").setDesc(adapter.state.billingAccountLinked ? "Sign out before changing accounts." : "Use the email associated with your account and purchases.").addText((text) => text.setPlaceholder("you@example.com").setValue(adapter.state.billingEmail).setDisabled(adapter.state.billingAccountLinked).onChange(async (value) => {
+  new import_obsidian6.Setting(section).setName("Email").setDesc(adapter.state.billingAccountLinked ? "Sign out before changing accounts." : "Use the email associated with your account and purchases.").addText((text) => text.setPlaceholder("you@example.com").setValue(adapter.state.billingEmail).setDisabled(adapter.state.billingAccountLinked).onChange(async (value) => {
     return diagnostics.guard("constance-account.control_5", async () => {
       var _a, _b, _c, _d, _e;
       const diagnosticEnd12 = (_c = (_b = (_a = diagnostics) == null ? void 0 : _a.start) == null ? void 0 : _b.call(_a, "control.email.onChange")) != null ? _c : (() => {
@@ -993,7 +1126,7 @@ function addBillingAccountSettings(containerEl, adapter) {
       }
     });
   }));
-  new import_obsidian5.Setting(section).setName("Password").setDesc("Your password is used to sign in and is not saved by the plugin.").addText((text) => {
+  new import_obsidian6.Setting(section).setName("Password").setDesc("Your password is used to sign in and is not saved by the plugin.").addText((text) => {
     text.inputEl.type = "password";
     text.inputEl.maxLength = 256;
     text.setPlaceholder("8 to 128 characters").onChange((value) => {
@@ -1006,7 +1139,7 @@ function addBillingAccountSettings(containerEl, adapter) {
       });
     });
   });
-  new import_obsidian5.Setting(section).setName("Account").setDesc(accountStatus).addButton((button) => button.setButtonText("Connect").setDisabled(adapter.state.billingAccountLinked).onClick(async () => {
+  new import_obsidian6.Setting(section).setName("Account").setDesc(accountStatus).addButton((button) => button.setButtonText("Connect").setDisabled(adapter.state.billingAccountLinked).onClick(async () => {
     return diagnostics.guard("constance-account.control_7", async () => {
       var _a, _b, _c, _d, _e, _f, _g;
       const diagnosticEnd14 = (_c = (_b = (_a = diagnostics) == null ? void 0 : _a.start) == null ? void 0 : _b.call(_a, "control.account.onClick")) != null ? _c : (() => {
@@ -1014,16 +1147,18 @@ function addBillingAccountSettings(containerEl, adapter) {
       try {
         button.setDisabled(true);
         try {
-          await signInBillingAccount(adapter, password, "connect");
+          await connectWithinDeadline(adapter.state, () => signInBillingAccount(adapter, password, "connect"), () => {
+            var _a2;
+            return (_a2 = adapter.refresh) == null ? void 0 : _a2.call(adapter);
+          });
           password = "";
-          new import_obsidian5.Notice(adapter.state.billingRegistrationPending ? "Check your email and follow the verification link, then Connect again." : `Connected as ${adapter.state.billingEmail}.`);
+          new import_obsidian6.Notice(adapter.state.billingRegistrationPending ? "Check your email and follow the verification link, then Connect again." : `Connected as ${adapter.state.billingEmail}.`);
           (_d = adapter.refresh) == null ? void 0 : _d.call(adapter);
         } catch (error) {
           diagnostics.failure("constance-account.caught_8", error);
-          new import_obsidian5.Notice(error instanceof Error ? error.message : "Connection failed. Please try again.");
           (_e = adapter.refresh) == null ? void 0 : _e.call(adapter);
         } finally {
-          button.setDisabled(adapter.state.billingAccountLinked);
+          button.setDisabled(adapter.state.billingAccountLinked || pendingConnections.has(adapter.state));
         }
       } catch (diagnosticError14) {
         (_g = (_f = diagnostics) == null ? void 0 : _f.failure) == null ? void 0 : _g.call(_f, "control.account.onClick", diagnosticError14);
@@ -1039,7 +1174,7 @@ function addBillingAccountSettings(containerEl, adapter) {
       });
       try {
         await signOutBillingAccount(adapter);
-        new import_obsidian5.Notice("Signed out.");
+        new import_obsidian6.Notice("Signed out.");
         (_d = adapter.refresh) == null ? void 0 : _d.call(adapter);
       } catch (diagnosticError15) {
         (_f = (_e = diagnostics) == null ? void 0 : _e.failure) == null ? void 0 : _f.call(_e, "control.account.onClick", diagnosticError15);
@@ -1049,7 +1184,7 @@ function addBillingAccountSettings(containerEl, adapter) {
       }
     });
   }));
-  new import_obsidian5.Setting(section).setName("Forgot password?").setDesc("Reset your account password in your browser.").addButton((button) => button.setButtonText("Open reset page").onClick(() => {
+  new import_obsidian6.Setting(section).setName("Forgot password?").setDesc("Reset your account password in your browser.").addButton((button) => button.setButtonText("Open reset page").onClick(() => {
     return diagnostics.guard("constance-account.control_10", () => {
       var _a;
       const diagnosticAction16 = () => {
@@ -1073,7 +1208,7 @@ function addBillingAccountSettings(containerEl, adapter) {
   });
   queueMicrotask(() => applySettingsLayout(containerEl, adapter.appId));
 }
-var import_obsidian5, CONSTANCE_ACCOUNT_BASE_URL, ConstanceAccountError, billingPersisters, billingRefreshes;
+var import_obsidian6, pendingConnections, CONSTANCE_ACCOUNT_BASE_URL, ConstanceAccountError, billingPersisters, billingRefreshes;
 var init_constance_account = __esm({
   "publish/src/constance-account.ts"() {
     "use strict";
@@ -1081,7 +1216,8 @@ var init_constance_account = __esm({
     init_diagnostics();
     init_account_guidance();
     init_billing_checkout();
-    import_obsidian5 = require("obsidian");
+    import_obsidian6 = require("obsidian");
+    pendingConnections = /* @__PURE__ */ new WeakSet();
     CONSTANCE_ACCOUNT_BASE_URL = "https://app.tutivsoft.com";
     ConstanceAccountError = class extends Error {
       constructor(message, status) {
@@ -1103,15 +1239,39 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 
-// publish/src/selection-scope.ts
+// publish/src/matomo-plugin.ts
 var import_obsidian = require("obsidian");
+var import_matomo_client = __toESM(require_matomo_client());
+var instances = /* @__PURE__ */ new WeakMap();
+function initializeMatomo(plugin) {
+  try {
+    if (instances.has(plugin)) return;
+    const client = new import_matomo_client.MatomoClient({ product: "obsidian_aegis_note_locker", siteId: 127, platform: "obsidian", features: ["note_protected"] }, {
+      storage: (0, import_matomo_client.localStorageAdapter)(window.localStorage),
+      send: async (body) => {
+        await (0, import_obsidian.requestUrl)({ url: "https://atcdn.cyou/matomo.php", method: "POST", contentType: "application/x-www-form-urlencoded", body, throw: false });
+      }
+    });
+    instances.set(plugin, client);
+    plugin.register(() => {
+      client.enabled = false;
+      instances.delete(plugin);
+    });
+    void client.initialize().then(() => client.screen("home")).catch(() => {
+    });
+  } catch (_) {
+  }
+}
+
+// publish/src/selection-scope.ts
+var import_obsidian2 = require("obsidian");
 function selectedFiles(entries, accepts) {
   const files = /* @__PURE__ */ new Map();
   const folders = /* @__PURE__ */ new Set();
   const visit = (entry) => {
-    if (entry instanceof import_obsidian.TFile) {
+    if (entry instanceof import_obsidian2.TFile) {
       if (accepts(entry) && !files.has(entry.path)) files.set(entry.path, entry);
-    } else if (entry instanceof import_obsidian.TFolder && !folders.has(entry.path)) {
+    } else if (entry instanceof import_obsidian2.TFolder && !folders.has(entry.path)) {
       folders.add(entry.path);
       for (const child of [...entry.children]) visit(child);
     }
@@ -1128,19 +1288,19 @@ function registerSelectionAction(plugin, config) {
       try {
         await config.run(files);
       } catch (e) {
-        new import_obsidian.Notice(`${config.name}: operation failed. Check the status and try again.`);
+        new import_obsidian2.Notice(`${config.name}: operation failed. Check the status and try again.`);
       }
     }));
   };
   if (config.folders) plugin.registerEvent(plugin.app.workspace.on("file-menu", (menu, entry) => {
-    if (entry instanceof import_obsidian.TFolder) add(menu, [entry]);
+    if (entry instanceof import_obsidian2.TFolder) add(menu, [entry]);
   }));
   if (config.multiple !== false) plugin.registerEvent(plugin.app.workspace.on("files-menu", add));
 }
 
 // publish/src/main.ts
 init_diagnostics();
-var import_obsidian10 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 
 // publish/src/crypto.ts
 init_diagnostics();
@@ -1286,12 +1446,12 @@ async function sha256Hex(value) {
 
 // publish/src/frontmatter.ts
 init_diagnostics();
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 var AEGIS_KEY = "aegis";
 function parseMarkdown(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!match) return { frontmatter: {}, body: content, hasFrontmatter: false };
-  const parsed = (0, import_obsidian2.parseYaml)(match[1]);
+  const parsed = (0, import_obsidian3.parseYaml)(match[1]);
   return {
     frontmatter: parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {},
     body: content.slice(match[0].length),
@@ -1300,7 +1460,7 @@ function parseMarkdown(content) {
 }
 function serializeMarkdown(frontmatter, body) {
   if (Object.keys(frontmatter).length === 0) return body;
-  const yaml = (0, import_obsidian2.stringifyYaml)(frontmatter).trimEnd();
+  const yaml = (0, import_obsidian3.stringifyYaml)(frontmatter).trimEnd();
   return `---
 ${yaml}
 ---
@@ -1372,7 +1532,7 @@ function renderLoyaltyDiscount(root, pricesBelow = true) {
 
 // publish/src/native-operations.ts
 init_diagnostics();
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 init_constance_account();
 var BASE = "https://app.tutivsoft.com/api/v1";
 async function digest(value) {
@@ -1398,13 +1558,13 @@ async function api(host, path, body, publicRequest = false) {
     if (!publicRequest && (!host.settings.billingAccessToken || !host.settings.billingAccountLinked)) throw new Error("Keep this preview open. Sign in and verify your email in Settings, then return here to continue.");
     const send2 = () => {
       var _a2, _b2, _c2;
-      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.native-operations.api", import_obsidian6.requestUrl, {
+      return (_c2 = (_b2 = (_a2 = diagnostics) == null ? void 0 : _a2.request) == null ? void 0 : _b2.call(_a2, "network.native-operations.api", import_obsidian7.requestUrl, {
         url: BASE + path,
         method: body === void 0 ? "GET" : "POST",
         throw: false,
         headers: { "Content-Type": "application/json", ...!publicRequest ? { Authorization: `Bearer ${host.settings.billingAccessToken}` } : {} },
         body: body === void 0 ? void 0 : JSON.stringify(body)
-      })) != null ? _c2 : (0, import_obsidian6.requestUrl)({
+      })) != null ? _c2 : (0, import_obsidian7.requestUrl)({
         url: BASE + path,
         method: body === void 0 ? "GET" : "POST",
         throw: false,
@@ -1521,7 +1681,7 @@ async function reserveLegacyNative(host, appId, eventId, source2, result, dimens
           try {
             if (!["reserved", "committed"].includes(journal.state)) throw new Error("The reserved credits are no longer available. Nothing was saved. Refresh your balance and retry.");
             if (journal.state === "committed" && ((_d2 = journal.evidence) == null ? void 0 : _d2.length)) {
-              new import_obsidian6.Notice("This result is already saved. Open the existing output.");
+              new import_obsidian7.Notice("This result is already saved. Open the existing output.");
               return false;
             }
             if (journal.state !== "committed") journal.state = "writing";
@@ -1567,7 +1727,7 @@ async function reserveLegacyNative(host, appId, eventId, source2, result, dimens
           });
           try {
             if (["writing", "verified", "committed"].includes(journal.state)) {
-              new import_obsidian6.Notice("The saved changes could not be confirmed. Check the output before retrying. Its credits are still reserved.");
+              new import_obsidian7.Notice("The saved changes could not be confirmed. Check the output before retrying. Its credits are still reserved.");
               return;
             }
             const released = await settle("release");
@@ -1585,7 +1745,7 @@ async function reserveLegacyNative(host, appId, eventId, source2, result, dimens
       return await reservation;
     } catch (error) {
       diagnostics.failure("native-operations.caught_3", error);
-      new import_obsidian6.Notice(error instanceof Error ? error.message : String(error));
+      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error));
       return null;
     }
   } catch (diagnosticError2) {
@@ -1711,7 +1871,7 @@ async function reserveNative(host, appId, eventId, source2, result, dimensions, 
           });
           try {
             if (["writing", "verified", "committed"].includes(retained.state)) {
-              new import_obsidian6.Notice("The saved changes could not be confirmed. Check the output or contact support to review the charge.");
+              new import_obsidian7.Notice("The saved changes could not be confirmed. Check the output or contact support to review the charge.");
               return;
             }
             const released = await settle("release");
@@ -1729,7 +1889,7 @@ async function reserveNative(host, appId, eventId, source2, result, dimensions, 
       return await reservation;
     } catch (error) {
       diagnostics.failure("native-operations.caught_7", error);
-      new import_obsidian6.Notice(error instanceof Error ? error.message : String(error));
+      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error));
       return null;
     }
   } catch (diagnosticError8) {
@@ -1890,7 +2050,7 @@ async function renderNativePacks(container, host, appId, buy) {
       renderLoyaltyDiscount(root);
       for (const { pack, price, priceId, units, unit, available } of offers) {
         const details = [pack == null ? void 0 : pack.description, Number.isSafeInteger(units) && units > 0 ? `${units.toLocaleString()} ${unit}` : "", available ? "" : (pack == null ? void 0 : pack.availability_reason) || "Current price unavailable"].filter(Boolean).join(" \xB7 ");
-        new import_obsidian6.Setting(root).setName((pack == null ? void 0 : pack.price_name) || (pack == null ? void 0 : pack.name) || (pack == null ? void 0 : pack.code) || "Credit pack").setDesc(details).addButton((b) => b.setButtonText(available ? pack.formatted_total : "Pricing unavailable").setDisabled(!available).onClick(() => {
+        new import_obsidian7.Setting(root).setName((pack == null ? void 0 : pack.price_name) || (pack == null ? void 0 : pack.name) || (pack == null ? void 0 : pack.code) || "Credit pack").setDesc(details).addButton((b) => b.setButtonText(available ? pack.formatted_total : "Pricing unavailable").setDisabled(!available).onClick(() => {
           return diagnostics.guard("native-operations.control_13", () => {
             var _a2;
             const diagnosticAction16 = () => void diagnostics.guard("native-operations.background_14", () => buy(priceId));
@@ -1913,7 +2073,7 @@ async function renderNativePacks(container, host, appId, buy) {
 }
 
 // publish/src/settings.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // publish/src/billing.ts
 init_diagnostics();
@@ -2152,7 +2312,7 @@ var DEFAULT_SETTINGS = {
 };
 
 // publish/src/settings.ts
-var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
+var AegisSettingTab = class extends import_obsidian8.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     __publicField(this, "plugin", plugin);
@@ -2179,7 +2339,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         const advanced = this.plugin.settings.settingsMode === "advanced";
         const diagnosticStage5 = (_n = (_m = (_l = diagnostics) == null ? void 0 : _l.start) == null ? void 0 : _m.call(_l, "settings.render.settings_mode")) != null ? _n : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Settings mode").setDesc("Simple shows everyday controls. Advanced includes detailed behavior and troubleshooting.").addDropdown((dropdown) => dropdown.addOption("simple", "Simple").addOption("advanced", "Advanced \u2014 optional").setValue(this.plugin.settings.settingsMode).onChange(async (value) => {
+        new import_obsidian8.Setting(containerEl).setName("Settings mode").setDesc("Simple shows everyday controls. Advanced includes detailed behavior and troubleshooting.").addDropdown((dropdown) => dropdown.addOption("simple", "Simple").addOption("advanced", "Advanced \u2014 optional").setValue(this.plugin.settings.settingsMode).onChange(async (value) => {
           return diagnostics.guard("settings.control_2", async () => {
             var _a3, _b2, _c2, _d2, _e2;
             const diagnosticEnd19 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.settings_mode.onChange")) != null ? _c2 : (() => {
@@ -2201,7 +2361,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         let passwordInput;
         const diagnosticStage6 = (_q = (_p = (_o = diagnostics) == null ? void 0 : _o.start) == null ? void 0 : _p.call(_o, "settings.render.session_password")) != null ? _q : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => {
+        new import_obsidian8.Setting(containerEl).setName("Session password").setDesc("Set this once per Obsidian session so Lock, Unlock, and Backup run without password pop-ups. The password stays in memory only and is never saved to plugin data.").addText((text) => {
           passwordInput = text;
           text.setPlaceholder("Session password");
           text.inputEl.type = "password";
@@ -2217,14 +2377,14 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
             var _a3;
             const diagnosticAction21 = () => {
               if (!sessionPassword) {
-                new import_obsidian7.Notice("Enter a password to set it for this session.");
+                new import_obsidian8.Notice("Enter a password to set it for this session.");
                 passwordInput == null ? void 0 : passwordInput.inputEl.focus();
                 return;
               }
               this.plugin.setSessionPassword(sessionPassword);
               sessionPassword = "";
               passwordInput == null ? void 0 : passwordInput.setValue("");
-              new import_obsidian7.Notice("Aegis session password set.");
+              new import_obsidian8.Notice("Aegis session password set.");
             };
             return ((_a3 = diagnostics) == null ? void 0 : _a3.run) ? diagnostics.run("control.session_password.onClick", diagnosticAction21) : diagnosticAction21();
           });
@@ -2232,7 +2392,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         diagnosticStage6();
         const diagnosticStage7 = (_t = (_s = (_r = diagnostics) == null ? void 0 : _r.start) == null ? void 0 : _s.call(_r, "settings.render.review_before_applying")) != null ? _t : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Review before applying").setDesc("Review and confirm changes before applying them. Off by default.").addToggle((toggle) => toggle.setValue(this.plugin.settings.reviewBeforeApply).onChange(async (value) => {
+        new import_obsidian8.Setting(containerEl).setName("Review before applying").setDesc("Review and confirm changes before applying them. Off by default.").addToggle((toggle) => toggle.setValue(this.plugin.settings.reviewBeforeApply).onChange(async (value) => {
           return diagnostics.guard("settings.control_5", async () => {
             var _a3, _b2, _c2, _d2, _e2;
             const diagnosticEnd22 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.review_before_applying.onChange")) != null ? _c2 : (() => {
@@ -2252,7 +2412,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         const diagnosticStage8 = (_w = (_v = (_u = diagnostics) == null ? void 0 : _u.start) == null ? void 0 : _v.call(_u, "settings.render.protected_properties")) != null ? _w : (() => {
         });
         if (advanced) {
-          new import_obsidian7.Setting(containerEl).setName("Protected properties").setDesc("Comma or newline separated frontmatter property names to protect. Leave empty to protect every eligible property.").addTextArea((text) => text.setValue(this.plugin.settings.protectedProperties).onChange(async (value) => {
+          new import_obsidian8.Setting(containerEl).setName("Protected properties").setDesc("Comma or newline separated frontmatter property names to protect. Leave empty to protect every eligible property.").addTextArea((text) => text.setValue(this.plugin.settings.protectedProperties).onChange(async (value) => {
             return diagnostics.guard("settings.control_6", async () => {
               var _a3, _b2, _c2, _d2, _e2;
               const diagnosticEnd23 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.protected_properties.onChange")) != null ? _c2 : (() => {
@@ -2276,7 +2436,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         diagnosticStage9();
         const diagnosticStage10 = (_C = (_B = (_A = diagnostics) == null ? void 0 : _A.start) == null ? void 0 : _B.call(_A, "settings.render.billing")) != null ? _C : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Billing").setHeading();
+        new import_obsidian8.Setting(containerEl).setName("Billing").setHeading();
         diagnosticStage10();
         const balanceEl = containerEl.createEl("p", { cls: "aegis-billing-summary" });
         const renderBalance = () => {
@@ -2298,7 +2458,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         diagnosticStage12();
         const diagnosticStage13 = (_L = (_K = (_J = diagnostics) == null ? void 0 : _J.start) == null ? void 0 : _K.call(_J, "settings.render.retry_preserved_protection")) != null ? _L : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Resume protection").setDesc("Continue with the preview saved in this session. Notes that changed since the preview will not be overwritten.").addButton((b) => b.setButtonText("Retry").onClick(() => {
+        new import_obsidian8.Setting(containerEl).setName("Resume protection").setDesc("Continue with the preview saved in this session. Notes that changed since the preview will not be overwritten.").addButton((b) => b.setButtonText("Retry").onClick(() => {
           return diagnostics.guard("settings.control_7", () => {
             var _a3;
             const diagnosticAction25 = () => void diagnostics.guard("settings.background_8", () => this.plugin.retryProtectionPreview());
@@ -2338,7 +2498,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         diagnosticStage14();
         const diagnosticStage15 = (_R = (_Q = (_P = diagnostics) == null ? void 0 : _P.start) == null ? void 0 : _Q.call(_P, "settings.render.refresh_purchased_balance")) != null ? _R : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Refresh balance").setDesc("Update your free and purchased credit balance. Unlocking, viewing, restoring, and exporting already protected content are free.").addButton((button) => button.setButtonText("Refresh").onClick(async () => {
+        new import_obsidian8.Setting(containerEl).setName("Refresh balance").setDesc("Update your free and purchased credit balance. Unlocking, viewing, restoring, and exporting already protected content are free.").addButton((button) => button.setButtonText("Refresh").onClick(async () => {
           return diagnostics.guard("settings.control_10", async () => {
             var _a3, _b2, _c2, _d2, _e2;
             const diagnosticEnd28 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.refresh_purchased_balance.onClick")) != null ? _c2 : (() => {
@@ -2351,7 +2511,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
                 renderBalance();
               } catch (caughtError11) {
                 diagnostics.failure("settings.caught_12", caughtError11);
-                new import_obsidian7.Notice("Aegis: balance could not be refreshed. Check your connection and account, then retry.");
+                new import_obsidian8.Notice("Aegis: balance could not be refreshed. Check your connection and account, then retry.");
               } finally {
                 button.setDisabled(false);
               }
@@ -2373,7 +2533,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         diagnosticStage16();
         const diagnosticStage17 = (_X = (_W = (_V = diagnostics) == null ? void 0 : _V.start) == null ? void 0 : _W.call(_V, "settings.render.session_timeout")) != null ? _X : (() => {
         });
-        new import_obsidian7.Setting(containerEl).setName("Session timeout").setDesc("Minutes of inactivity before the password is cleared. Default: 15 minutes; enter it again to unlock later.").addDropdown((dropdown) => dropdown.addOption("5", "5 minutes \u2014 shorter sessions").addOption("15", "15 minutes \u2014 recommended").addOption("30", "30 minutes").addOption("60", "60 minutes").addOptions([5, 15, 30, 60].includes(this.plugin.settings.sessionTimeoutMinutes) ? {} : { [String(this.plugin.settings.sessionTimeoutMinutes)]: `${this.plugin.settings.sessionTimeoutMinutes} minutes \u2014 current` }).setValue(String(this.plugin.settings.sessionTimeoutMinutes)).onChange(async (value) => {
+        new import_obsidian8.Setting(containerEl).setName("Session timeout").setDesc("Minutes of inactivity before the password is cleared. Default: 15 minutes; enter it again to unlock later.").addDropdown((dropdown) => dropdown.addOption("5", "5 minutes \u2014 shorter sessions").addOption("15", "15 minutes \u2014 recommended").addOption("30", "30 minutes").addOption("60", "60 minutes").addOptions([5, 15, 30, 60].includes(this.plugin.settings.sessionTimeoutMinutes) ? {} : { [String(this.plugin.settings.sessionTimeoutMinutes)]: `${this.plugin.settings.sessionTimeoutMinutes} minutes \u2014 current` }).setValue(String(this.plugin.settings.sessionTimeoutMinutes)).onChange(async (value) => {
           return diagnostics.guard("settings.control_14", async () => {
             var _a3, _b2, _c2, _d2, _e2;
             const diagnosticEnd29 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.session_timeout.onChange")) != null ? _c2 : (() => {
@@ -2394,7 +2554,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
         });
         if (advanced) {
           this.plugin.support.addDiagnosticsSetting(containerEl);
-          new import_obsidian7.Setting(containerEl).setName("Encrypted backup folder").setDesc("Vault-relative folder used for user-requested encrypted exports.").addText((text) => text.setPlaceholder(".aegis-backups").setValue(this.plugin.settings.backupFolder).onChange(async (value) => {
+          new import_obsidian8.Setting(containerEl).setName("Encrypted backup folder").setDesc("Vault-relative folder used for user-requested encrypted exports.").addText((text) => text.setPlaceholder(".aegis-backups").setValue(this.plugin.settings.backupFolder).onChange(async (value) => {
             return diagnostics.guard("settings.control_15", async () => {
               var _a3, _b2, _c2, _d2, _e2;
               const diagnosticEnd30 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.encrypted_backup_folder.onChange")) != null ? _c2 : (() => {
@@ -2410,7 +2570,7 @@ var AegisSettingTab = class extends import_obsidian7.PluginSettingTab {
               }
             });
           }));
-          new import_obsidian7.Setting(containerEl).setName("Show status bar").setDesc("Show the current note's locked or unlocked state in the status bar.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showStatusBar).onChange(async (value) => {
+          new import_obsidian8.Setting(containerEl).setName("Show status bar").setDesc("Show the current note's locked or unlocked state in the status bar.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showStatusBar).onChange(async (value) => {
             return diagnostics.guard("settings.control_16", async () => {
               var _a3, _b2, _c2, _d2, _e2;
               const diagnosticEnd31 = (_c2 = (_b2 = (_a3 = diagnostics) == null ? void 0 : _a3.start) == null ? void 0 : _b2.call(_a3, "control.show_status_bar.onChange")) != null ? _c2 : (() => {
@@ -2457,13 +2617,13 @@ function temporaryPath(path) {
 
 // publish/src/ui.ts
 init_diagnostics();
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 function safeError(error) {
   const message = error instanceof Error ? error.message : "The operation failed.";
   if (/password|decrypt|authentication|envelope|corrupt|tamper/i.test(message)) return "The password was incorrect or the encrypted record is damaged.";
   return message.replace(/[\r\n]+/g, " ").slice(0, 180);
 }
-var ConfirmModal = class extends import_obsidian8.Modal {
+var ConfirmModal = class extends import_obsidian9.Modal {
   constructor(app, title, message, confirmLabel = "Continue") {
     super(app);
     __publicField(this, "title", title);
@@ -2514,7 +2674,7 @@ var ConfirmModal = class extends import_obsidian8.Modal {
     this.close();
   }
 };
-var ProgressModal = class extends import_obsidian8.Modal {
+var ProgressModal = class extends import_obsidian9.Modal {
   constructor(app, total) {
     super(app);
     __publicField(this, "total", total);
@@ -2546,12 +2706,12 @@ var ProgressModal = class extends import_obsidian8.Modal {
   }
 };
 function notifyFailure(error) {
-  new import_obsidian8.Notice(`Aegis: ${safeError(error)}`);
+  new import_obsidian9.Notice(`Aegis: ${safeError(error)}`);
 }
 
 // publish/src/plugin-support.ts
 init_diagnostics();
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 var SAFE_DETAIL_KEYS = /* @__PURE__ */ new Set([
   "version",
   "operation",
@@ -2614,7 +2774,7 @@ function safeDetail(value) {
   }
   return JSON.stringify(safe);
 }
-var DocumentationModal = class extends import_obsidian9.Modal {
+var DocumentationModal = class extends import_obsidian10.Modal {
   constructor(app, docs, plugin, welcome = false) {
     super(app);
     __publicField(this, "docs", docs);
@@ -2634,14 +2794,14 @@ var DocumentationModal = class extends import_obsidian9.Modal {
         target == null ? void 0 : target.openTabById((_a = this.plugin) == null ? void 0 : _a.manifest.id);
         this.close();
       };
-      new import_obsidian9.Setting(this.contentEl).addButton((button) => button.setButtonText("Open account").setCta().onClick(diagnostics.wrap("plugin-support.control_2", settings))).addButton((button) => button.setButtonText("Lock current note").onClick(() => {
+      new import_obsidian10.Setting(this.contentEl).addButton((button) => button.setButtonText("Open account").setCta().onClick(diagnostics.wrap("plugin-support.control_2", settings))).addButton((button) => button.setButtonText("Lock current note").onClick(() => {
         return diagnostics.guard("plugin-support.control_3", () => {
           var _a, _b;
           const commands = this.app.commands;
           const command = "lock-current-note";
           const id = command === "command-palette:open" ? command : ((_a = this.plugin) == null ? void 0 : _a.manifest.id) + ":" + command;
           const available = (_b = commands == null ? void 0 : commands.executeCommandById) == null ? void 0 : _b.call(commands, id);
-          if (available === false || !(commands == null ? void 0 : commands.executeCommandById)) new import_obsidian9.Notice("Open the command palette and choose " + this.docs.name + ". Check the selected note or attachment first.");
+          if (available === false || !(commands == null ? void 0 : commands.executeCommandById)) new import_obsidian10.Notice("Open the command palette and choose " + this.docs.name + ". Check the selected note or attachment first.");
           this.close();
         });
       }));
@@ -2653,7 +2813,7 @@ var DocumentationModal = class extends import_obsidian9.Modal {
         return details;
       };
       const problems = section("Common problems", ["Email not received? Check spam, confirm the address in Account, then use Connect again after verification. Use the account page for recovery; do not create another account to recover purchases.", ...this.docs.troubleshooting]);
-      new import_obsidian9.Setting(problems).addButton((button) => button.setButtonText("Open account").onClick(diagnostics.wrap("plugin-support.control_4", settings)));
+      new import_obsidian10.Setting(problems).addButton((button) => button.setButtonText("Open account").onClick(diagnostics.wrap("plugin-support.control_4", settings)));
       problems.createEl("a", { text: "Forgot password?", href: "https://app.tutivsoft.com/password-reset", attr: { target: "_blank", rel: "noopener noreferrer" } });
       section("Account and purchases", ["Your remaining free allowance and purchases belong to your account. Your credit balance stays with your account after reinstalling. Current prices are shown in Account. Refresh balance after a delayed payment instead of purchasing again."]);
       section("Advanced settings \u2014 optional", ["Simple shows everyday controls. Open Settings and choose Advanced for more customization and troubleshooting. Switching views keeps saved preferences."]);
@@ -2688,7 +2848,7 @@ var PluginSupport = class {
   addDebugSetting(containerEl) {
     const renderEnd = diagnostics.start("settings.render.debug_logging");
     try {
-      new import_obsidian9.Setting(containerEl).setName("Debug logging").setDesc("Record detailed activity logs for troubleshooting. Off by default.").addToggle((toggle) => toggle.setValue(this.debugEnabled()).onChange((value) => diagnostics.guard("plugin-support.control_7", () => this.setDebugLogging(value))));
+      new import_obsidian10.Setting(containerEl).setName("Debug logging").setDesc("Record detailed activity logs for troubleshooting. Off by default.").addToggle((toggle) => toggle.setValue(this.debugEnabled()).onChange((value) => diagnostics.guard("plugin-support.control_7", () => this.setDebugLogging(value))));
     } finally {
       renderEnd();
     }
@@ -2757,10 +2917,10 @@ var PluginSupport = class {
       callback: async () => {
         try {
           await this.setDebugLogging(!this.debugEnabled());
-          new import_obsidian9.Notice(this.docs.name + ": debug logging " + (this.debugEnabled() ? "enabled." : "disabled."));
+          new import_obsidian10.Notice(this.docs.name + ": debug logging " + (this.debugEnabled() ? "enabled." : "disabled."));
         } catch (caughtError10) {
           diagnostics.failure("plugin-support.caught_11", caughtError10);
-          new import_obsidian9.Notice(this.docs.name + ": could not save the logging setting. Try again.");
+          new import_obsidian10.Notice(this.docs.name + ": could not save the logging setting. Try again.");
         }
       }
     });
@@ -2779,7 +2939,7 @@ var PluginSupport = class {
         void diagnostics.guard("plugin-support.background_13", () => persist().then(() => new DocumentationModal(this.plugin.app, this.docs, this.plugin, true).open()).catch((rejectedError1) => {
           diagnostics.failure("plugin-support.rejected_2", rejectedError1);
           state.flowWelcomeSeen = false;
-          new import_obsidian9.Notice("Could not save setup progress. Your existing data is unchanged; reopen Help to continue.");
+          new import_obsidian10.Notice("Could not save setup progress. Your existing data is unchanged; reopen Help to continue.");
         }));
       });
     });
@@ -2789,7 +2949,7 @@ var PluginSupport = class {
     if (now - this.lastFailureNotice < 5e3) return;
     this.lastFailureNotice = now;
     try {
-      new import_obsidian9.Notice(this.docs.name + ": this action could not be completed. Try again or copy the diagnostic log for support.");
+      new import_obsidian10.Notice(this.docs.name + ": this action could not be completed. Try again or copy the diagnostic log for support.");
     } catch (caughtError14) {
     }
   }
@@ -2807,7 +2967,7 @@ var PluginSupport = class {
     return ((_a = this.plugin.settings) == null ? void 0 : _a.autoShowOperationWindows) === true;
   }
   addHelpSetting(containerEl) {
-    new import_obsidian9.Setting(containerEl).setName("Show automatic windows").setDesc("Open queue, progress, result, and welcome windows automatically. Off by default; status messages remain visible.").addToggle((toggle) => toggle.setValue(this.automaticWindowsEnabled()).onChange(async (enabled2) => {
+    new import_obsidian10.Setting(containerEl).setName("Show automatic windows").setDesc("Open queue, progress, result, and welcome windows automatically. Off by default; status messages remain visible.").addToggle((toggle) => toggle.setValue(this.automaticWindowsEnabled()).onChange(async (enabled2) => {
       const host = this.plugin;
       const previous = host.settings.autoShowOperationWindows;
       host.settings.autoShowOperationWindows = enabled2;
@@ -2818,13 +2978,13 @@ var PluginSupport = class {
       } catch (error) {
         host.settings.autoShowOperationWindows = previous;
         toggle.setValue(this.automaticWindowsEnabled());
-        new import_obsidian9.Notice("Could not save the automatic windows preference. Try again.");
+        new import_obsidian10.Notice("Could not save the automatic windows preference. Try again.");
       }
     }));
-    new import_obsidian9.Setting(containerEl).setName("Help").setDesc("Get started, recover your account, or remove the plugin.").addButton((button) => button.setButtonText("Open Help").onClick(() => diagnostics.guard("plugin-support.control_16", () => new DocumentationModal(this.plugin.app, this.docs, this.plugin).open())));
+    new import_obsidian10.Setting(containerEl).setName("Help").setDesc("Get started, recover your account, or remove the plugin.").addButton((button) => button.setButtonText("Open Help").onClick(() => diagnostics.guard("plugin-support.control_16", () => new DocumentationModal(this.plugin.app, this.docs, this.plugin).open())));
   }
   addDiagnosticsSetting(containerEl) {
-    new import_obsidian9.Setting(containerEl).setName("Diagnostics").setDesc("Copy up to the latest 1,000 events recorded by this plugin. Logs reset when the plugin reloads. Note contents, paths, credentials, and raw error messages are excluded.").addButton((button) => button.setButtonText("Copy full log").onClick(() => {
+    new import_obsidian10.Setting(containerEl).setName("Diagnostics").setDesc("Copy up to the latest 1,000 events recorded by this plugin. Logs reset when the plugin reloads. Note contents, paths, credentials, and raw error messages are excluded.").addButton((button) => button.setButtonText("Copy full log").onClick(() => {
       return diagnostics.guard("plugin-support.control_17", () => {
         void diagnostics.guard("plugin-support.background_18", () => this.copyDiagnostics());
       });
@@ -2912,11 +3072,11 @@ var PluginSupport = class {
       await navigator.clipboard.writeText(text);
       this.info("diagnostics.copy_succeeded", { total: snapshot.length });
       const omitted = this.droppedEntries ? "; " + this.droppedEntries + " older events omitted" : "";
-      new import_obsidian9.Notice(this.docs.name + ": copied " + snapshot.length + " log events" + omitted + ".");
+      new import_obsidian10.Notice(this.docs.name + ": copied " + snapshot.length + " log events" + omitted + ".");
     } catch (error) {
       diagnostics.failure("plugin-support.caught_22", error);
       this.error("diagnostics.copy_failed", error);
-      new import_obsidian9.Notice(this.docs.name + ": could not copy the debug log.");
+      new import_obsidian10.Notice(this.docs.name + ": could not copy the debug log.");
     }
   }
 };
@@ -2933,7 +3093,7 @@ function asRecord(value) {
 function isMarkdown(file) {
   return file.extension.toLowerCase() === "md";
 }
-var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
+var AegisNoteLockerPlugin = class extends import_obsidian11.Plugin {
   constructor() {
     super(...arguments);
     __publicField(this, "settings", { ...DEFAULT_SETTINGS });
@@ -2948,6 +3108,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
   }
   async onload() {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    initializeMatomo(this);
     let diagnosticStartupEnd = () => {
     };
     const diagnosticEnd1 = (_c = (_b = (_a = diagnostics) == null ? void 0 : _a.start) == null ? void 0 : _b.call(_a, "main.onload")) != null ? _c : (() => {
@@ -2968,7 +3129,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
       this.addCommand({ id: "cancel-lock-all", name: "Cancel active lock/unlock batch", callback: () => {
         if (this.activeProgress) {
           this.activeProgress.cancelled = true;
-          new import_obsidian10.Notice("Aegis: cancelling the batch after the current note.");
+          new import_obsidian11.Notice("Aegis: cancelling the batch after the current note.");
         }
       } });
       this.addCommand({ id: "lock-now", name: "Lock now (clear session)", callback: () => this.lockNow() });
@@ -2985,7 +3146,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         folders: true,
         run: (files) => {
           if (this.activeProgress) {
-            new import_obsidian10.Notice("Aegis: a lock batch is already running.");
+            new import_obsidian11.Notice("Aegis: a lock batch is already running.");
             return;
           }
           return this.lockAllNotes(files);
@@ -3091,7 +3252,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     }));
   }
   addFileMenuItems(menu, file) {
-    if (!(file instanceof import_obsidian10.TFile) || !isMarkdown(file)) return;
+    if (!(file instanceof import_obsidian11.TFile) || !isMarkdown(file)) return;
     menu.addItem((item) => item.setTitle("Aegis: Lock note").setIcon("lock").onClick(() => {
       return diagnostics.guard("main.control_11", () => {
         var _a;
@@ -3149,7 +3310,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         this.touchSession();
         return await this.sessionPassword;
       }
-      new import_obsidian10.Notice("Aegis: set the session password in plugin settings before running this command.");
+      new import_obsidian11.Notice("Aegis: set the session password in plugin settings before running this command.");
       return null;
     } catch (diagnosticError11) {
       (_e = (_d = diagnostics) == null ? void 0 : _d.failure) == null ? void 0 : _e.call(_d, "main.passwordForNewEncryption", diagnosticError11);
@@ -3168,7 +3329,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         return await this.sessionPassword;
       }
       this.clearSession();
-      new import_obsidian10.Notice("Aegis: set the session password in plugin settings before running this command.");
+      new import_obsidian11.Notice("Aegis: set the session password in plugin settings before running this command.");
       return null;
     } catch (diagnosticError12) {
       (_e = (_d = diagnostics) == null ? void 0 : _d.failure) == null ? void 0 : _e.call(_d, "main.passwordForUnlock", diagnosticError12);
@@ -3187,7 +3348,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
   expireSessionIfNeeded() {
     if (this.sessionPassword && Date.now() >= this.sessionExpiresAt) {
       this.clearSession();
-      new import_obsidian10.Notice("The password session expired. Enter your password again to unlock encrypted notes.");
+      new import_obsidian11.Notice("The password session expired. Enter your password again to unlock encrypted notes.");
     }
   }
   lockNow() {
@@ -3208,7 +3369,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     try {
       const preview = this.protectionPreview;
       if (!preview) {
-        new import_obsidian10.Notice("No protection preview is open.");
+        new import_obsidian11.Notice("No protection preview is open.");
         return;
       }
       const reservation = await reserveProtectionUse(this, preview.original, preview.next, preview.eventId);
@@ -3227,14 +3388,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     });
     try {
       if (!file || !isMarkdown(file)) {
-        new import_obsidian10.Notice("Aegis: open a Markdown note first.");
+        new import_obsidian11.Notice("Aegis: open a Markdown note first.");
         return;
       }
       try {
         const original = await this.app.vault.read(file);
         const parsed = parseMarkdown(original);
         if (asRecord(parsed.frontmatter[AEGIS_KEY])) {
-          new import_obsidian10.Notice("Aegis: this note already has protected content.");
+          new import_obsidian11.Notice("Aegis: this note already has protected content.");
           return;
         }
         if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review note lock", `The encrypted note body cannot be read by search or other plugins. Its path and frontmatter remain visible. You can restore the original during this session.`, "Continue").waitForResult()) return;
@@ -3246,7 +3407,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } }, LOCKED_NOTE_PLACEHOLDER);
         this.protectionPreview = { file, original, next, eventId: jobId(), success: "Aegis: note locked." };
         if (!this.settings.billingAccessToken) {
-          new import_obsidian10.Notice("Your note is ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");
+          new import_obsidian11.Notice("Your note is ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");
           return;
         }
         await this.retryProtectionPreview();
@@ -3267,14 +3428,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     });
     try {
       if (!file || !isMarkdown(file)) {
-        new import_obsidian10.Notice("Aegis: open a Markdown note first.");
+        new import_obsidian11.Notice("Aegis: open a Markdown note first.");
         return;
       }
       try {
         const original = await this.app.vault.read(file);
         const parsed = parseMarkdown(original);
         if (((_d = asRecord(parsed.frontmatter[AEGIS_KEY])) == null ? void 0 : _d.mode) === "note") {
-          new import_obsidian10.Notice("Aegis: unlock the note body before protecting properties.");
+          new import_obsidian11.Notice("Aegis: unlock the note body before protecting properties.");
           return;
         }
         const existing = asRecord(parsed.frontmatter[AEGIS_KEY]);
@@ -3283,13 +3444,13 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
           return !((_a2 = existing == null ? void 0 : existing.properties) == null ? void 0 : _a2[key]);
         });
         if (!keys.length) {
-          new import_obsidian10.Notice("Aegis: this note has no top-level frontmatter properties.");
+          new import_obsidian11.Notice("Aegis: this note has no top-level frontmatter properties.");
           return;
         }
         const configured = this.settings.protectedProperties.split(/[\n,]/).map((key) => key.trim()).filter(Boolean);
         const chosen = configured.length ? keys.filter((key) => configured.includes(key)) : keys;
         if (!chosen.length) {
-          new import_obsidian10.Notice("Aegis: none of the configured frontmatter properties exist in this note.");
+          new import_obsidian11.Notice("Aegis: none of the configured frontmatter properties exist in this note.");
           return;
         }
         if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue").waitForResult()) return;
@@ -3305,7 +3466,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         const next = serializeMarkdown({ ...updatedFrontmatter, [AEGIS_KEY]: nextRecord }, parsed.body);
         this.protectionPreview = { file, original, next, eventId: jobId(), success: `Aegis: protected ${chosen.length} properties.` };
         if (!this.settings.billingAccessToken) {
-          new import_obsidian10.Notice("Your selected properties are ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");
+          new import_obsidian11.Notice("Your selected properties are ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");
           return;
         }
         await this.retryProtectionPreview();
@@ -3326,11 +3487,11 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     });
     try {
       if (!batch && this.selectionInFlight) {
-        new import_obsidian10.Notice("Aegis: a note batch is already running.");
+        new import_obsidian11.Notice("Aegis: a note batch is already running.");
         return null;
       }
       if (!file || !isMarkdown(file)) {
-        new import_obsidian10.Notice("Aegis: open a Markdown note first.");
+        new import_obsidian11.Notice("Aegis: open a Markdown note first.");
         return null;
       }
       try {
@@ -3338,7 +3499,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         const parsed = parseMarkdown(original);
         const record = asRecord(parsed.frontmatter[AEGIS_KEY]);
         if (!record) {
-          new import_obsidian10.Notice("Aegis: this note is not locked.");
+          new import_obsidian11.Notice("Aegis: this note is not locked.");
           return null;
         }
         if (!batch && this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue").waitForResult()) return null;
@@ -3354,7 +3515,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         } else throw new Error("Unsupported Aegis record.");
         const next = serializeMarkdown(nextFrontmatter, nextBody);
         await this.atomicChange(file, original, next, !batch);
-        if (!batch) new import_obsidian10.Notice("Aegis: note unlocked.");
+        if (!batch) new import_obsidian11.Notice("Aegis: note unlocked.");
         return { path: file.path, original, resulting: next };
       } catch (error) {
         diagnostics.failure("main.caught_25", error);
@@ -3370,7 +3531,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
   }
   async unlockSelectedNotes(files) {
     if (this.selectionInFlight || this.activeProgress) {
-      new import_obsidian10.Notice("Aegis: a note batch is already running.");
+      new import_obsidian11.Notice("Aegis: a note batch is already running.");
       return;
     }
     this.selectionInFlight = true;
@@ -3388,7 +3549,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         }
       }
       if (!candidates.length) {
-        new import_obsidian10.Notice(`Aegis: no locked selected notes; ${skipped} skipped, ${failed} failed.`);
+        new import_obsidian11.Notice(`Aegis: no locked selected notes; ${skipped} skipped, ${failed} failed.`);
         return;
       }
       if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review selected-note unlock", `${candidates.length} locked notes will be decrypted. Unlocked notes are skipped; all successful changes can be rolled back together.`, "Continue").waitForResult()) return;
@@ -3404,7 +3565,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         if (entry) entries.push(entry);
         else failed++;
       }
-      new import_obsidian10.Notice(`Aegis: unlocked ${entries.length} note(s), ${skipped} skipped, ${failed} failed${progress.cancelled ? "; cancelled before the remaining notes" : ""}.`);
+      new import_obsidian11.Notice(`Aegis: unlocked ${entries.length} note(s), ${skipped} skipped, ${failed} failed${progress.cancelled ? "; cancelled before the remaining notes" : ""}.`);
     } catch (error) {
       notifyFailure(error);
     } finally {
@@ -3420,7 +3581,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     });
     if (this.selectionInFlight || this.activeProgress) {
       diagnosticEnd17();
-      new import_obsidian10.Notice("Aegis: a note batch is already running.");
+      new import_obsidian11.Notice("Aegis: a note batch is already running.");
       return;
     }
     this.selectionInFlight = true;
@@ -3433,7 +3594,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
           if (!asRecord(parseMarkdown(content).frontmatter[AEGIS_KEY])) candidates.push(file);
         }
         if (!candidates.length) {
-          new import_obsidian10.Notice("Aegis: no unlocked Markdown notes found.");
+          new import_obsidian11.Notice("Aegis: no unlocked Markdown notes found.");
           return;
         }
         if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue").waitForResult()) return;
@@ -3442,7 +3603,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         const progress = new ProgressModal(this.app, candidates.length);
         this.activeProgress = progress;
         if (this.support.automaticWindowsEnabled()) progress.open();
-        else new import_obsidian10.Notice("Aegis: locking notes.");
+        else new import_obsidian11.Notice("Aegis: locking notes.");
         await new Promise((resolve) => window.setTimeout(diagnostics.wrap("main.timer_26", resolve), 0));
         const entries = [];
         for (let index = 0; index < candidates.length; index++) {
@@ -3466,14 +3627,14 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
             }
           } catch (error) {
             diagnostics.failure("main.caught_27", error);
-            new import_obsidian10.Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`);
+            new import_obsidian11.Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`);
           }
         }
         progress.update(entries.length, progress.cancelled ? "Cancelled" : "Complete");
         progress.close();
         this.activeProgress = void 0;
         if (entries.length) this.undoRecord = { createdAt: Date.now(), entries };
-        new import_obsidian10.Notice(`Aegis: locked ${entries.length} note(s)${progress.cancelled ? " before cancellation" : ""}.`);
+        new import_obsidian11.Notice(`Aegis: locked ${entries.length} note(s)${progress.cancelled ? " before cancellation" : ""}.`);
       } catch (error) {
         diagnostics.failure("main.caught_28", error);
         (_d = this.activeProgress) == null ? void 0 : _d.close();
@@ -3494,7 +3655,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     });
     try {
       if (!file || !isMarkdown(file)) {
-        new import_obsidian10.Notice("Aegis: open a Markdown note first.");
+        new import_obsidian11.Notice("Aegis: open a Markdown note first.");
         return;
       }
       try {
@@ -3515,8 +3676,8 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         await this.app.vault.adapter.write(backupPath, backupResult);
         if (await this.app.vault.adapter.read(backupPath) !== backupResult) throw new Error("The backup could not be confirmed. Check the backup folder before retrying. Its credits are still reserved.");
         const committed = await (reservation == null ? void 0 : reservation.commit());
-        if ((committed == null ? void 0 : committed.kind) === "pending") new import_obsidian10.Notice("Encrypted backup saved. Its charge is awaiting confirmation.");
-        new import_obsidian10.Notice(`Aegis: encrypted backup written to ${backupPath}.`);
+        if ((committed == null ? void 0 : committed.kind) === "pending") new import_obsidian11.Notice("Encrypted backup saved. Its charge is awaiting confirmation.");
+        new import_obsidian11.Notice(`Aegis: encrypted backup written to ${backupPath}.`);
       } catch (error) {
         diagnostics.failure("main.caught_29", error);
         notifyFailure(error);
@@ -3535,7 +3696,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
     try {
       const record = this.undoRecord;
       if (!(record == null ? void 0 : record.entries.length)) {
-        new import_obsidian10.Notice("Aegis: no changes are available to restore in this session.");
+        new import_obsidian11.Notice("Aegis: no changes are available to restore in this session.");
         return;
       }
       if (this.settings.reviewBeforeApply && !await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult()) return;
@@ -3543,7 +3704,7 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
       const remaining = [];
       for (const entry of record.entries) {
         const file = this.app.vault.getAbstractFileByPath(entry.path);
-        if (!(file instanceof import_obsidian10.TFile)) {
+        if (!(file instanceof import_obsidian11.TFile)) {
           remaining.push(entry);
           continue;
         }
@@ -3553,11 +3714,11 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
         } catch (caughtError30) {
           diagnostics.failure("main.caught_31", caughtError30);
           remaining.push(entry);
-          new import_obsidian10.Notice(`Aegis: rollback refused for ${entry.path} because it changed.`);
+          new import_obsidian11.Notice(`Aegis: rollback refused for ${entry.path} because it changed.`);
         }
       }
       this.undoRecord = remaining.length ? { ...record, entries: remaining } : void 0;
-      new import_obsidian10.Notice(`Aegis: rolled back ${restored} note(s)${remaining.length ? `; ${remaining.length} still available to retry` : ""}.`);
+      new import_obsidian11.Notice(`Aegis: rolled back ${restored} note(s)${remaining.length ? `; ${remaining.length} still available to retry` : ""}.`);
     } catch (diagnosticError19) {
       (_e = (_d = diagnostics) == null ? void 0 : _d.failure) == null ? void 0 : _e.call(_d, "main.rollbackLastOperation", diagnosticError19);
       throw diagnosticError19;
@@ -3616,11 +3777,11 @@ var AegisNoteLockerPlugin = class extends import_obsidian10.Plugin {
             diagnostics.failure("main.caught_33", rollbackError);
             throw new Error(`Aegis could not confirm the protection charge or restore the note safely: ${rollbackError instanceof Error ? rollbackError.message : "rollback failed"}`);
           }
-          new import_obsidian10.Notice("Aegis: no purchased use was available; the note was left unchanged.");
+          new import_obsidian11.Notice("Aegis: no purchased use was available; the note was left unchanged.");
           return false;
         }
         if (successNotice) {
-          new import_obsidian10.Notice(result.kind === "pending" ? `${successNotice} Billing will retry the purchased-use charge.` : successNotice);
+          new import_obsidian11.Notice(result.kind === "pending" ? `${successNotice} Billing will retry the purchased-use charge.` : successNotice);
         }
         return true;
       } catch (error) {
