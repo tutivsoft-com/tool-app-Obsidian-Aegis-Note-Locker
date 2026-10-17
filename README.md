@@ -66,6 +66,6 @@ Obsidian note encryption, encrypted Markdown, frontmatter encryption, password-p
 
 ## Release
 
-Version 3.3.63 is prepared for manual validation and publication.
+Version 3.3.63 was published on 17 October 2026. Its final Obsidian Community audit completed successfully. [Release assets](https://github.com/tutivsoft-com/tool-app-Obsidian-Aegis-Note-Locker/releases/tag/3.3.63).
 
 Basic app usage events are sent to https://atcdn.cyou without note contents. Account and purchase operations use Constance.
