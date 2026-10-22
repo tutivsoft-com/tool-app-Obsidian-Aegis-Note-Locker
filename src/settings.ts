@@ -111,7 +111,7 @@ addBillingAccountSettings(containerEl, { state: this.plugin.settings, appId: "ae
 diagnosticStage12();
 
     const diagnosticStage13 = diagnostics?.start?.("settings.render.retry_preserved_protection") ?? (() => {});
-new Setting(containerEl).setName("Resume protection").setDesc("Continue with the preview saved in this session. Notes that changed since the preview will not be overwritten.").addButton(b=>b.setButtonText("Retry").onClick(()=>{
+if ((this.plugin as any).protectionPreview) new Setting(containerEl).setName("Resume protection").setDesc("Continue with the preview saved in this session. Notes that changed since the preview will not be overwritten.").addButton(b=>b.setButtonText("Retry").onClick(()=>{
 return diagnostics.guard("settings.control_7", () => { const diagnosticAction25 = () => (void diagnostics.guard("settings.background_8", () => (this.plugin.retryProtectionPreview()))); return diagnostics?.run ? diagnostics.run("control.retry_preserved_protection.onClick", diagnosticAction25) : diagnosticAction25();
 });
 }));
@@ -159,7 +159,7 @@ diagnostics.failure("settings.caught_12", caughtError11);
 diagnosticStage15();
 
     const diagnosticStage16 = diagnostics?.start?.("settings.render.stage_4") ?? (() => {});
-void diagnostics.guard("settings.background_13", () => (syncBalance(this.plugin).then(() => retryPendingProtectionCharges(this.plugin)).then(renderBalance).catch((rejectedError1) => {
+if (this.plugin.settings.billingAccountLinked) void diagnostics.guard("settings.background_13", () => (syncBalance(this.plugin).then(() => retryPendingProtectionCharges(this.plugin)).then(renderBalance).catch((rejectedError1) => {
 diagnostics.failure("settings.rejected_2", rejectedError1); balanceEl.setText("Balance unavailable. Use Refresh to retry; your saved balance is retained."); })));
 diagnosticStage16();
 
