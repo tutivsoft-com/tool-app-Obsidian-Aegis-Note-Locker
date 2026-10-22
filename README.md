@@ -1,71 +1,29 @@
 # Aegis Note Locker
 
-Encrypt a note body or selected frontmatter values locally in Obsidian.
+Protect note content locally with the existing password-based encryption workflow.
 
-**Best for:** Obsidian users protecting selected sensitive note content.
+## Use
 
-## Top 10 features
+Install or update the plugin through Obsidian Community plugins, enable it, and open its settings. Use the existing plugin commands for the selected note, text or files. Existing preferences and local recovery records are retained.
 
-1. Protect a Markdown note body.
-2. Protect selected top-level properties.
-3. Unlock protected content.
-4. Use password-derived encryption.
-5. Authenticate encrypted content.
-6. Keep the password in session memory.
-7. Set session timeout controls.
-8. Lock supported note batches.
-9. Export encrypted backups.
-10. Recover the last supported operation.
+## Account and billing
 
-## Example workflow
+Connect your Constance account in plugin settings. If you create an account, confirm the email link and then connect again. Authentication, current offers, free allowance, purchased balance and payment confirmation use the Constance v2 service at https://app.tutivsoft.com.
 
-**Before:** A private note body is readable in the vault.
+Current paid names, descriptions, prices, currencies and included units come from the payment provider through Constance. Refresh the displayed offers before buying. If current pricing cannot be verified, buying is unavailable. Only canonical payment fulfillment grants credits. A completed purchase stays saved until the refreshed balance is saved and acknowledged. Pending requests retain their original identity after a retry or restart. Use Check payment or Cancel current purchase in the billing section when needed.
 
-**After:** Set a password and protect the body. Unlock with that password when you need to edit it, and re-protect plaintext when finished.
+New purchases use Paddle and USD. Existing historical purchases retain their original provider. No payment credentials are bundled in the plugin.
 
-## Pricing
+## Privacy and recovery
 
-A connected account includes 5 protection operations as a one-time lifetime allowance. Previous use counts toward that allowance.
+Account requests send authentication and billing information to Constance. Passwords are not saved. Session credentials and recovery state are kept in local plugin settings. Billing requests do not contain note or image contents. The main processing workflow stays local. Basic app usage events use the existing analytics service without note contents. Diagnostic logs stay local unless you copy and share them.
 
-| Pack | USD price | Included units |
-|---|---:|---:|
-| Starter | $2.00 | 50 protection operations |
-| Standard | $4.00 | 150 protection operations |
-| Pro | $8.00 | 450 protection operations |
-| Ultimate | $14.00 | 1,200 protection operations |
-
-Packs are one-time purchases. Purchased units do not expire. Final tax and local currency are shown at checkout.
-
-## What to know
-
-Encryption runs locally. Unlocking can leave plaintext on disk; clearing the password session does not re-encrypt it.
-
----
-
-## Discover Aegis Note Locker
-
-Whether you need to protect a Markdown note body or protect selected top-level properties, Aegis Note Locker provides a focused workflow for Obsidian users protecting selected sensitive note content.
-
-### Common questions
-
-**What can I use it for?**
-
-You can protect a Markdown note body, use password-derived encryption or authenticate encrypted content.
-
-**How do I get started?**
-
-Enable the plugin in Obsidian, open its settings and choose the action that fits your note. Connect your account for metered actions; the settings page shows your remaining allowance and available packs.
-
-### Search description
-
-Encrypt a note body or selected frontmatter values locally in Obsidian. Designed for Obsidian users protecting selected sensitive note content.
-
-### Related topics
-
-Obsidian note encryption, encrypted Markdown, frontmatter encryption, password-protected notes.
+Uncertain older billing records are retained and are never replayed as new v2 charges. Connect the original account and contact support if an earlier operation needs recovery.
 
 ## Release
 
-Version 3.3.63 was published on 17 October 2026. Its final Obsidian Community audit completed successfully. [Release assets](https://github.com/tutivsoft-com/tool-app-Obsidian-Aegis-Note-Locker/releases/tag/3.3.63).
+Version 3.3.65 is prepared for the manual Community publication checks. A source push alone does not publish a plugin update. Installable updates use a matching version tag and the three assets main.js, manifest.json and styles.css.
 
-Basic app usage events are sent to https://atcdn.cyou without note contents. Account and purchase operations use Constance.
+## Support
+
+Use the plugin's Help or Open documentation command and the support links in its manifest. For a billing problem, retain the original purchase or operation identity and use the account portal. Do not share passwords or session tokens.

@@ -1,3 +1,4 @@
+import {syncEntitlements} from "./constance-v2";
 import { diagnostics } from "./diagnostics";
 import { registerBillingPersister } from "./constance-account";
 import { reserveNative, jobId, codePoints, recoverNative } from "./native-operations";
@@ -40,7 +41,7 @@ export interface UseReservation {
 function generateEventId(): string {
   const bytes = new Uint8Array(12);
   window.crypto.getRandomValues(bytes);
-  return `evt_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  return `v2consume_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function ensureDeviceId(plugin: AegisNoteLockerPlugin): string {
@@ -73,7 +74,7 @@ const diagnosticEnd2 = diagnostics?.start?.("billing.fetchBalance") ?? (() => {}
 try {
 
   const response = await requestAuthenticatedBilling(plugin.settings, {
-    url: `${BASE_URL}/api/v1/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
+    url: `${BASE_URL}/api/v2/billing/entitlements/me?${new URLSearchParams({ app_id: AEGIS_APP_ID, installation_id: plugin.settings.constanceDeviceId }).toString()}`,
     method: "GET",
   });
   if (response.status === 401 || response.status === 403 || response.status === 404) { plugin.settings.billingAccessToken = ""; plugin.settings.billingRefreshToken = ""; plugin.settings.billingAccountLinked = false; await saveBillingState(plugin); throw new Error("Billing session expired"); }
@@ -93,25 +94,8 @@ try {
 }
 
 export async function syncBalance(plugin: AegisNoteLockerPlugin, strict = false): Promise<void> {
-const diagnosticEnd3 = diagnostics?.start?.("billing.syncBalance") ?? (() => {});
-try {
-
-  registerBillingPersister(plugin.settings, () => plugin.saveSettings());
-  resumeAccountCheckout({ state: plugin.settings, appId: AEGIS_APP_ID, installationId: plugin.settings.constanceDeviceId,
-    persist: () => plugin.saveSettings(), syncBalance: () => syncBalance(plugin), refreshSession: () => refreshBillingSession(plugin.settings, () => plugin.saveSettings()) });
-
-  const deviceId = ensureDeviceId(plugin);
-  try {
-    if (!plugin.settings.billingAccessToken || !plugin.settings.billingAccountLinked) { if (strict) throw new Error("Connect your account before refreshing."); return; }
-    plugin.settings.purchasedUses = await fetchBalance(plugin);
-    await saveBillingState(plugin);
-  } catch (error) {
-diagnostics.failure("billing.caught_extra_2", error);
-    diagnostics?.legacy?.("warn", "billing.aegis_constance_balance_sync_failed");
-      if (strict) throw error;
-  }
-
-} catch (diagnosticError3) { diagnostics?.failure?.("billing.syncBalance", diagnosticError3); throw diagnosticError3; } finally { diagnosticEnd3(); }
+await syncEntitlements(plugin.settings,()=>plugin.saveSettings());
+(plugin as any).refreshBillingSummary?.();
 }
 
 async function spendPurchasedUse(plugin: AegisNoteLockerPlugin, eventId: string): Promise<SpendResult> {
@@ -134,29 +118,7 @@ diagnostics.failure("billing.caught_extra_3", error);
 
 /** Retry persisted charges with their original event IDs after an uncertain request. */
 export async function retryPendingProtectionCharges(plugin: AegisNoteLockerPlugin): Promise<void> {
-const diagnosticEnd5 = diagnostics?.start?.("billing.retryPendingProtectionCharges") ?? (() => {});
-try {
-
-  const pending = [...(plugin.settings.pendingProtectionCharges ?? [])];
-  if (!pending.length) return;
-  const deviceId = ensureDeviceId(plugin);
-  for (const eventId of pending) {
-    const result = await spendPurchasedUse(plugin, eventId);
-    if (result.kind === "error") break;
-    if (result.kind === "insufficient") {
-      plugin.settings.purchasedUses = 0;
-      // The server has authoritatively rejected this event. Keeping it in
-      // the pending queue would block every future paid operation forever.
-      plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
-      await saveBillingState(plugin);
-      break;
-    }
-    plugin.settings.purchasedUses = result.balance;
-    plugin.settings.pendingProtectionCharges = plugin.settings.pendingProtectionCharges.filter((id) => id !== eventId);
-    if (!(await saveBillingState(plugin))) break;
-  }
-
-} catch (diagnosticError5) { diagnostics?.failure?.("billing.retryPendingProtectionCharges", diagnosticError5); throw diagnosticError5; } finally { diagnosticEnd5(); }
+return;
 }
 
 export async function initializeBilling(plugin: AegisNoteLockerPlugin): Promise<void> {
@@ -189,12 +151,5 @@ try {
 }
 
 export async function openCheckout(plugin: AegisNoteLockerPlugin, pack: AegisPackKey): Promise<void> {
-const diagnosticEnd8 = diagnostics?.start?.("billing.openCheckout") ?? (() => {});
-try {
-
-  await openAccountCheckout({ state: plugin.settings, appId: AEGIS_APP_ID, installationId: ensureDeviceId(plugin),
-    persist: () => plugin.saveSettings(), syncBalance: () => syncBalance(plugin), refreshSession: () => refreshBillingSession(plugin.settings, () => plugin.saveSettings())
-  }, AEGIS_PLAN_CODES[pack]);
-
-} catch (diagnosticError8) { diagnostics?.failure?.("billing.openCheckout", diagnosticError8); throw diagnosticError8; } finally { diagnosticEnd8(); }
+await openAccountCheckout({state:plugin.settings,appId:"aegis-note-locker",installationId:plugin.settings.constanceDeviceId,persist:()=>plugin.saveSettings(),syncBalance:async()=>{await syncEntitlements(plugin.settings,()=>plugin.saveSettings());(plugin as any).refreshBillingSummary?.();},refreshSession:()=>refreshBillingSession(plugin.settings,()=>plugin.saveSettings())}, typeof pack === "string" && pack.includes("010") ? "onetime-standard" : "onetime");
 }
