@@ -22,7 +22,9 @@ Uncertain older billing records are retained and are never replayed as new v2 ch
 
 ## Release
 
-Version 3.3.71 contains the settings and payment-status improvements. Its exact-source preview and final Community audit completed, and it is confirmed as Current release. Install or update through Obsidian Community plugins.
+Version 3.3.75: Protection operations refresh balances. Selected-note batches support cancellation and byte-verified rollback.
+
+Use the matching GitHub release for installation availability. Community directory review is separate from source validation.
 
 ## Support
 
