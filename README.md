@@ -24,7 +24,7 @@ Uncertain older billing records are retained and are never replayed as new v2 ch
 
 Version 3.3.76: Protection operations refresh balances. Selected-note batches support cancellation and byte-verified rollback.
 
-Use the matching GitHub release for installation availability. Community directory review is separate from source validation.
+Obsidian Community release **3.3.76** requires Obsidian **1.5.0** or later. [GitHub release](https://github.com/tutivsoft-com/tool-app-Obsidian-Aegis-Note-Locker/releases/tag/3.3.76).
 
 ## Support
 
