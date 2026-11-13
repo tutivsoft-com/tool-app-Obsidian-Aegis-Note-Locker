@@ -130,7 +130,7 @@ try {
   plugin.settings = { ...plugin.settings, ...resetDailyUsageIfNeeded(plugin.settings) };
   await plugin.saveSettings();
   void diagnostics.guard("billing.background_1", () => (recoverNative({app:plugin.app,settings:plugin.settings,persistNative:()=>plugin.saveSettings()})));
-  void diagnostics.guard("billing.background_2", () => (syncBalance(plugin).then(() => retryPendingProtectionCharges(plugin))));
+  if (plugin.settings.billingAccountLinked) void diagnostics.guard("billing.background_2", () => (syncBalance(plugin).then(() => retryPendingProtectionCharges(plugin))));
 
 } catch (diagnosticError6) { diagnostics?.failure?.("billing.initializeBilling", diagnosticError6); throw diagnosticError6; } finally { diagnosticEnd6(); }
 }
@@ -145,7 +145,7 @@ export async function reserveProtectionUse(plugin: AegisNoteLockerPlugin, source
 const diagnosticEnd7 = diagnostics?.start?.("billing.reserveProtectionUse") ?? (() => {});
 try {
 
-  return await (reserveNative({app:plugin.app,settings:plugin.settings,persistNative:()=>plugin.saveSettings()},AEGIS_APP_ID,eventId,source,result,{input_characters:codePoints(source)}));
+  return await (reserveNative({app:plugin.app,settings:plugin.settings,persistNative:()=>plugin.saveSettings(),syncBalance:()=>syncBalance(plugin)},AEGIS_APP_ID,eventId,source,result,{input_characters:codePoints(source)}));
 
 } catch (diagnosticError7) { diagnostics?.failure?.("billing.reserveProtectionUse", diagnosticError7); throw diagnosticError7; } finally { diagnosticEnd7(); }
 }
