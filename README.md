@@ -20,11 +20,11 @@ Account requests send authentication and billing information to Constance. Passw
 
 Uncertain older billing records are retained and are never replayed as new v2 charges. Connect the original account and contact support if an earlier operation needs recovery.
 
-## Release
+## Version 3.3.78
 
-Version 3.3.76: Protection operations refresh balances. Selected-note batches support cancellation and byte-verified rollback.
+Preserve edits to locked notes, bind protection work to the original session, and restore saved backups safely.
 
-Obsidian Community release **3.3.76** requires Obsidian **1.5.0** or later. [GitHub release](https://github.com/tutivsoft-com/tool-app-Obsidian-Aegis-Note-Locker/releases/tag/3.3.76).
+Requires Obsidian 1.5.0 or later. [GitHub releases](https://github.com/tutivsoft-com/tool-app-Obsidian-Aegis-Note-Locker/releases).
 
 ## Support
 

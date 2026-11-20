@@ -7,6 +7,42 @@ export function safeError(error: unknown): string {
   return message.replace(/[\r\n]+/g, " ").slice(0, 180);
 }
 
+export class BackupPickerModal extends Modal {
+  private resolveChoice?: (value: string | File | null) => void;
+
+  constructor(app: App, private paths: string[]) { super(app); }
+
+  choose(): Promise<string | File | null> {
+    return new Promise(resolve => { this.resolveChoice = resolve; this.open(); });
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Restore encrypted backup");
+    this.contentEl.createEl("p", {text: "Choose a backup to decrypt into a new Markdown note in the vault root."});
+    if (this.paths.length) {
+      const select = this.contentEl.createEl("select");
+      select.setAttr("aria-label", "Backup in configured folder");
+      for (const path of this.paths) select.createEl("option", {value: path, text: path});
+      this.contentEl.createEl("button", {text: "Restore selected backup"}).onclick = () => this.finish(select.value);
+    }
+    const label = this.contentEl.createEl("label", {text: "Choose a backup file from this device"});
+    const input = label.createEl("input", {type: "file"});
+    input.accept = ".aegis";
+    input.onchange = () => { if (input.files?.[0]) this.finish(input.files[0]); };
+  }
+
+  private finish(value: string | File): void {
+    this.resolveChoice?.(value);
+    this.close();
+  }
+
+  onClose(): void {
+    this.resolveChoice?.(null);
+    this.resolveChoice = undefined;
+    this.contentEl.empty();
+  }
+}
+
 export class ConfirmModal extends Modal {
   private resolvePromise?: (value: boolean) => void;
   private settled = false;

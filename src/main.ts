@@ -6,7 +6,7 @@ import { decryptText, encryptText, sha256Hex } from "./crypto";
 import { AEGIS_KEY, displayValue, parseMarkdown, serializeMarkdown, topLevelPropertyNames } from "./frontmatter";
 import { DEFAULT_SETTINGS, AegisSettingTab } from "./settings";
 import { assertNoConflict, temporaryPath } from "./safety";
-import { ConfirmModal, ProgressModal, notifyFailure } from "./ui";
+import { BackupPickerModal, ConfirmModal, ProgressModal, notifyFailure } from "./ui";
 import { jobId, recoverNative, digest } from "./native-operations";
 import { initializeBilling, reserveProtectionUse, syncBalance, type ProtectionCommitResult, type UseReservation } from "./billing";
 import type { AegisRecord, AegisSettings, UndoEntry, UndoRecord } from "./types";
@@ -19,6 +19,7 @@ function asRecord(value: unknown): AegisRecord | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<AegisRecord>;
   if (record.mode !== "note" && record.mode !== "properties") return null;
+  if (record.mode === "properties" && (!record.properties || typeof record.properties !== "object" || Array.isArray(record.properties) || !Object.keys(record.properties).length)) return null;
   return record as AegisRecord;
 }
 
@@ -28,6 +29,7 @@ export default class AegisNoteLockerPlugin extends Plugin {
   settings: AegisSettings = { ...DEFAULT_SETTINGS };
   support!: PluginSupport;
   private sessionPassword: string | undefined;
+  private sessionGeneration = 0;
   private sessionExpiresAt = 0;
   private undoRecord: UndoRecord | undefined;
   private statusBar?: HTMLElement;
@@ -56,6 +58,7 @@ diagnosticStartupEnd = diagnostics?.start?.("startup.initialize") ?? (() => {});
     this.addCommand({ id: "cancel-lock-all", name: "Cancel active lock/unlock batch", callback: () => { if (this.activeProgress) { this.activeProgress.cancelled = true; new Notice("Aegis: cancelling the batch after the current note."); } } });
     this.addCommand({ id: "lock-now", name: "Lock now (clear session)", callback: () => this.lockNow() });
     this.addCommand({ id: "rollback-last-operation", name: "Roll back last operation", callback: () => this.rollbackLastOperation() });
+    this.addCommand({ id: "restore-backup", name: "Restore encrypted backup to a new note", callback: () => this.restoreBackup() });
     this.addCommand({ id: "export-encrypted-backup", name: "Export encrypted backup of current note", callback: () => this.exportEncryptedBackup() });
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => diagnostics.guard("main.event_3", () => (this.addFileMenuItems(menu, file)))));
     this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor, info) => diagnostics.guard("main.event_4", () => (this.addEditorMenuItems(menu, editor, info?.file)))));
@@ -189,24 +192,55 @@ try {
 } catch (diagnosticError12) { diagnostics?.failure?.("main.passwordForUnlock", diagnosticError12); throw diagnosticError12; } finally { diagnosticEnd12(); }
 }
 
-  setSessionPassword(password: string): void { this.sessionPassword = password || undefined; this.touchSession(); }
+  setSessionPassword(password: string): void {
+    if (password !== this.sessionPassword || Date.now() >= this.sessionExpiresAt) this.clearSession();
+    this.sessionPassword = password || undefined;
+    this.touchSession();
+  }
   private touchSession(): void { this.sessionExpiresAt = Date.now() + this.settings.sessionTimeoutMinutes * 60_000; }
   private expireSessionIfNeeded(): void { if (this.sessionPassword && Date.now() >= this.sessionExpiresAt) { this.clearSession(); new Notice("The password session expired. Enter your password again to unlock encrypted notes."); } }
-  lockNow(): void { this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; this.updateStatusBar(); }
-  private clearSession(): void { this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; }
+  lockNow(): void { this.clearSession(); this.updateStatusBar(); }
+  private clearSession(): void { this.sessionGeneration++; this.protectionPreview = undefined; this.sessionPassword = undefined; this.sessionExpiresAt = 0; this.undoRecord = undefined; }
 
-  private protectionPreview?: {file:TFile; original:string; next:string; eventId:string; success:string};
+  private protectionPreview?: {file:TFile; sourceDigest:string; next:string; eventId:string; success:string; generation:number};
+  private resumingPreview = false;
+
+  private sessionIsCurrent(generation: number): boolean {
+    return generation === this.sessionGeneration && Boolean(this.sessionPassword) && Date.now() < this.sessionExpiresAt;
+  }
+
+  private requireSession(generation: number): void {
+    if (!this.sessionIsCurrent(generation)) {
+      throw new Error("The session changed or expired. Start the operation again.");
+    }
+  }
+
   async retryProtectionPreview(): Promise<void> {
-const diagnosticEnd13 = diagnostics?.start?.("main.retryProtectionPreview") ?? (() => {});
-try {
-
-    const preview=this.protectionPreview; if(!preview) {new Notice("No protection preview is open.");return;}
-    const reservation=await reserveProtectionUse(this,preview.original,preview.next,preview.eventId);
-    if(!reservation)return;
-    await this.applyProtectionChange(preview.file,preview.original,preview.next,reservation,preview.success);
-
-} catch (diagnosticError13) { diagnostics?.failure?.("main.retryProtectionPreview", diagnosticError13); throw diagnosticError13; } finally { diagnosticEnd13(); }
-}
+    this.expireSessionIfNeeded();
+    const preview = this.protectionPreview;
+    if (!preview) { new Notice("No protection preview is open."); return; }
+    if (this.resumingPreview) { new Notice("A protection operation is already in progress."); return; }
+    const ensureCurrent = () => {
+      this.requireSession(preview.generation);
+      if (preview !== this.protectionPreview) throw new Error("The protection preview changed. Start again.");
+    };
+    this.resumingPreview = true;
+    try {
+      ensureCurrent();
+      const original = await this.app.vault.read(preview.file);
+      if (await digest(original) !== preview.sourceDigest) throw new Error("The note changed since the preview. Start protection again.");
+      ensureCurrent();
+      const reservation = await reserveProtectionUse(this, original, preview.next, preview.eventId);
+      if (!reservation) return;
+      await this.applyProtectionChange(preview.file, original, preview.next, reservation, preview.success, true, ensureCurrent);
+      if (this.protectionPreview === preview) this.protectionPreview = undefined;
+    } catch (error) {
+      if (this.protectionPreview === preview) this.protectionPreview = undefined;
+      notifyFailure(error);
+    } finally {
+      this.resumingPreview = false;
+    }
+  }
   private async lockCurrentNote(file = this.currentFile()): Promise<void> {
 const diagnosticEnd14 = diagnostics?.start?.("main.lockCurrentNote") ?? (() => {});
 try {
@@ -216,14 +250,18 @@ try {
       const original = await this.app.vault.read(file);
       const parsed = parseMarkdown(original);
       if (asRecord(parsed.frontmatter[AEGIS_KEY])) { new Notice("Aegis: this note already has protected content."); return; }
+      this.ensureMetadataAvailable(parsed.frontmatter);
       if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review note lock", `The encrypted note body cannot be read by search or other plugins. Its path and frontmatter remain visible. You can restore the original during this session.`, "Continue").waitForResult())) return;
+      const generation = this.sessionGeneration;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
       const envelope = await encryptText(parsed.body, password);
       const verified = await decryptText(envelope, password);
       if (verified !== parsed.body) throw new Error("Aegis verification failed before the file was changed.");
       const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-      this.protectionPreview={file,original,next,eventId:jobId(),success:"Aegis: note locked."};
+      const sourceDigest = await digest(original);
+      this.requireSession(generation);
+      this.protectionPreview={file,generation,sourceDigest,next,eventId:jobId(),success:"Aegis: note locked."};
       if(!this.settings.billingAccessToken) {new Notice("Your note is ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");return;}
       await this.retryProtectionPreview();
     } catch (error) {
@@ -242,14 +280,24 @@ try {
       const parsed = parseMarkdown(original);
       if (asRecord(parsed.frontmatter[AEGIS_KEY])?.mode === "note") { new Notice("Aegis: unlock the note body before protecting properties."); return; }
       const existing = asRecord(parsed.frontmatter[AEGIS_KEY]);
+      if (!existing) this.ensureMetadataAvailable(parsed.frontmatter);
       const keys = topLevelPropertyNames(parsed.frontmatter).filter((key) => !existing?.properties?.[key]);
       if (!keys.length) { new Notice("Aegis: this note has no top-level frontmatter properties."); return; }
       const configured = this.settings.protectedProperties.split(/[\n,]/).map((key) => key.trim()).filter(Boolean);
       const chosen = configured.length ? keys.filter((key) => configured.includes(key)) : keys;
       if (!chosen.length) { new Notice("Aegis: none of the configured frontmatter properties exist in this note."); return; }
       if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review property lock", `Protect ${chosen.length} frontmatter propert${chosen.length === 1 ? "y" : "ies"}? Names stay visible; values will be replaced with a non-sensitive placeholder.`, "Continue").waitForResult())) return;
+      const generation = this.sessionGeneration;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
+      if (existing?.properties) {
+        try {
+          for (const envelope of Object.values(existing.properties)) await decryptText(envelope, password);
+        } catch {
+          new Notice("Aegis: unlock the existing protected properties before adding more with this session.");
+          return;
+        }
+      }
       const protectedValues = { ...(existing?.properties ?? {}) };
       const updatedFrontmatter = { ...parsed.frontmatter };
       for (const key of chosen) {
@@ -258,7 +306,9 @@ try {
       }
       const nextRecord: AegisRecord = { mode: "properties", properties: protectedValues };
       const next = serializeMarkdown({ ...updatedFrontmatter, [AEGIS_KEY]: nextRecord }, parsed.body);
-      this.protectionPreview={file,original,next,eventId:jobId(),success:`Aegis: protected ${chosen.length} properties.`};
+      const sourceDigest = await digest(original);
+      this.requireSession(generation);
+      this.protectionPreview={file,generation,sourceDigest,next,eventId:jobId(),success:`Aegis: protected ${chosen.length} properties.`};
       if(!this.settings.billingAccessToken) {new Notice("Your selected properties are ready to encrypt. Keep this session open, sign in and verify your email in Settings, then choose Resume protection. Nothing has been saved.");return;}
       await this.retryProtectionPreview();
     } catch (error) {
@@ -267,7 +317,7 @@ diagnostics.failure("main.caught_24", error); notifyFailure(error); }
 } catch (diagnosticError15) { diagnostics?.failure?.("main.lockProperties", diagnosticError15); throw diagnosticError15; } finally { diagnosticEnd15(); }
 }
 
-  private async unlockCurrentNote(file = this.currentFile(), batch?: { password: string }): Promise<UndoEntry | null> {
+  private async unlockCurrentNote(file = this.currentFile(), batch?: { password: string; generation: number }): Promise<UndoEntry | null> {
 const diagnosticEnd16 = diagnostics?.start?.("main.unlockCurrentNote") ?? (() => {});
 try {
 
@@ -279,19 +329,42 @@ try {
       const record = asRecord(parsed.frontmatter[AEGIS_KEY]);
       if (!record) { new Notice("Aegis: this note is not locked."); return null; }
       if (!batch && this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review unlock", "The encrypted record will be verified before the note is replaced. Nothing changes if the password is wrong or the file changed on disk.", "Continue").waitForResult())) return null;
+      const generation = batch?.generation ?? this.sessionGeneration;
       const password = batch?.password ?? await this.passwordForUnlock();
       if (!password) return null;
       const nextFrontmatter = { ...parsed.frontmatter };
       delete nextFrontmatter[AEGIS_KEY];
       let nextBody = parsed.body;
       if (record.mode === "note" && record.envelope) {
+        if (parsed.body !== LOCKED_NOTE_PLACEHOLDER) {
+          new Notice("Aegis: the locked body was edited. Save your edits elsewhere and restore the original lock message before unlocking.");
+          return null;
+        }
         nextBody = await decryptText(record.envelope, password);
       } else if (record.mode === "properties" && record.properties) {
-        for (const [key, envelope] of Object.entries(record.properties)) nextFrontmatter[key] = JSON.parse(await decryptText(envelope, password));
+        const remaining = { ...record.properties };
+        for (const [key, envelope] of Object.entries(record.properties)) {
+          if (parsed.frontmatter[key] !== LOCKED_PROPERTY_PLACEHOLDER) {
+            new Notice(`Aegis: the locked property "${key}" was edited. Save the edit elsewhere and restore its lock placeholder before unlocking.`);
+            return null;
+          }
+          try {
+            nextFrontmatter[key] = JSON.parse(await decryptText(envelope, password));
+            delete remaining[key];
+          } catch { /* Keep values this session cannot open encrypted. */ }
+        }
+        const count = Object.keys(remaining).length;
+        if (count) {
+          if (count === Object.keys(record.properties).length) throw new Error("Incorrect password or damaged encrypted properties.");
+          if (batch) { new Notice("Aegis: open this note individually to recover properties with different passwords."); return null; }
+          const message = `Restore the properties this password opens? ${count} will stay protected. You can unlock those separately with their original password.`;
+          if (!(await new ConfirmModal(this.app, "Recover matching properties", message, "Restore matching properties").waitForResult())) return null;
+          nextFrontmatter[AEGIS_KEY] = { ...record, properties: remaining };
+        }
       } else throw new Error("Unsupported Aegis record.");
       const next = serializeMarkdown(nextFrontmatter, nextBody);
-      await this.atomicChange(file, original, next, !batch);
-      if (!batch) new Notice("Aegis: note unlocked.");
+      await this.atomicChange(file, original, next, !batch, () => this.requireSession(generation));
+      if (!batch) new Notice(nextFrontmatter[AEGIS_KEY] ? "Aegis: matching properties restored. Other properties remain locked." : "Aegis: note unlocked.");
       return { path: file.path, original, resulting: next };
     } catch (error) {
 diagnostics.failure("main.caught_25", error); notifyFailure(error); return null; }
@@ -305,6 +378,7 @@ diagnostics.failure("main.caught_25", error); notifyFailure(error); return null;
     const entries: UndoEntry[] = [];
     let failed = 0, skipped = 0;
     let progress: ProgressModal | undefined;
+    let generation = this.sessionGeneration;
     try {
       const candidates: TFile[] = [];
       for (const file of files) {
@@ -313,21 +387,24 @@ diagnostics.failure("main.caught_25", error); notifyFailure(error); return null;
       }
       if (!candidates.length) { new Notice(`Aegis: no locked selected notes; ${skipped} skipped, ${failed} failed.`); return; }
       if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review selected-note unlock", `${candidates.length} locked notes will be decrypted. Unlocked notes are skipped; all successful changes can be rolled back together.`, "Continue").waitForResult())) return;
+      generation = this.sessionGeneration;
       const password = await this.passwordForUnlock();
       if (!password) return;
       progress = new ProgressModal(this.app, candidates.length);
       this.activeProgress = progress;
       if (this.support.automaticWindowsEnabled()) progress.open();
       for (let index = 0; index < candidates.length; index++) {
+        if (!this.sessionIsCurrent(generation)) progress.cancelled = true;
         if (progress.cancelled) break;
         progress.update(index, candidates[index].path);
-        const entry = await this.unlockCurrentNote(candidates[index], { password });
+        const entry = await this.unlockCurrentNote(candidates[index], { password, generation });
         if (entry) entries.push(entry); else failed++;
+        if (!this.sessionIsCurrent(generation)) progress.cancelled = true;
       }
       new Notice(`Aegis: unlocked ${entries.length} note(s), ${skipped} skipped, ${failed} failed${progress.cancelled ? "; cancelled before the remaining notes" : ""}.`);
     } catch (error) { notifyFailure(error); }
     finally {
-      if (entries.length) this.undoRecord = { createdAt: Date.now(), entries };
+      if (entries.length && this.sessionIsCurrent(generation)) this.undoRecord = { createdAt: Date.now(), entries };
       progress?.close();
       this.activeProgress = undefined;
       this.selectionInFlight = false;
@@ -345,8 +422,10 @@ try {
       for (const file of files) { const content = await this.app.vault.read(file); if (!asRecord(parseMarkdown(content).frontmatter[AEGIS_KEY])) candidates.push(file); }
       if (!candidates.length) { new Notice("Aegis: no unlocked Markdown notes found."); return; }
       if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Review lock-all operation", `${candidates.length} Markdown notes will be encrypted. Each file is checked for sync conflicts and verified before replacement.`, "Continue").waitForResult())) return;
+      const generation = this.sessionGeneration;
       const password = await this.passwordForNewEncryption();
       if (!password) return;
+      const ensureCurrent = () => this.requireSession(generation);
       const progress = new ProgressModal(this.app, candidates.length);
       this.activeProgress = progress;
       if (this.support.automaticWindowsEnabled()) progress.open();
@@ -354,6 +433,7 @@ try {
       await new Promise<void>((resolve) => window.setTimeout(diagnostics.wrap("main.timer_26", resolve), 0));
       const entries: UndoEntry[] = [];
       for (let index = 0; index < candidates.length; index++) {
+        if (!this.sessionIsCurrent(generation)) progress.cancelled = true;
         if (progress.cancelled) break;
         const file = candidates[index];
         progress.update(index, file.path);
@@ -361,27 +441,58 @@ try {
           const original = await this.app.vault.read(file);
           const parsed = parseMarkdown(original);
           if (asRecord(parsed.frontmatter[AEGIS_KEY])) continue;
+          this.ensureMetadataAvailable(parsed.frontmatter);
           const envelope = await encryptText(parsed.body, password);
           if (await decryptText(envelope, password) !== parsed.body) throw new Error("verification failed");
           const next = serializeMarkdown({ ...parsed.frontmatter, [AEGIS_KEY]: { mode: "note", envelope } satisfies AegisRecord }, LOCKED_NOTE_PLACEHOLDER);
-          const reservation = await reserveProtectionUse(this,original,next);
+          ensureCurrent();
+          const reservation = await reserveProtectionUse(this, original, next);
           if (!reservation) { progress.cancelled = true; break; }
-          if (await this.applyProtectionChange(file, original, next, reservation, "", false)) {
+          if (await this.applyProtectionChange(file, original, next, reservation, "", false, ensureCurrent)) {
             entries.push({ path: file.path, original, resulting: next });
           }
         } catch (error) {
 diagnostics.failure("main.caught_27", error); new Notice(`Aegis skipped ${file.path}: ${error instanceof Error ? error.message : "operation failed"}`); }
+        if (!this.sessionIsCurrent(generation)) progress.cancelled = true;
       }
       progress.update(entries.length, progress.cancelled ? "Cancelled" : "Complete");
       progress.close();
       this.activeProgress = undefined;
-      if (entries.length) this.undoRecord = { createdAt: Date.now(), entries };
+      if (entries.length && this.sessionIsCurrent(generation)) this.undoRecord = { createdAt: Date.now(), entries };
       new Notice(`Aegis: locked ${entries.length} note(s)${progress.cancelled ? " before cancellation" : ""}.`);
     } catch (error) {
 diagnostics.failure("main.caught_28", error); this.activeProgress?.close(); this.activeProgress = undefined; notifyFailure(error); }
 
 } catch (diagnosticError17) { diagnostics?.failure?.("main.lockAllNotes", diagnosticError17); throw diagnosticError17; } finally { this.selectionInFlight = false; diagnosticEnd17(); }
 }
+
+  private ensureMetadataAvailable(frontmatter: Record<string, unknown>): void {
+    if (Object.prototype.hasOwnProperty.call(frontmatter, AEGIS_KEY)) {
+      throw new Error('This note already uses the "aegis" property. Rename it before locking.');
+    }
+  }
+
+  private async restoreBackup(): Promise<void> {
+    try {
+      const generation = this.sessionGeneration;
+      const password = await this.passwordForUnlock();
+      if (!password) return;
+      const folder = this.settings.backupFolder.replace(/^\/+|\/+$/g, "") || ".aegis-backups";
+      const adapter = this.app.vault.adapter;
+      const files = await adapter.exists(folder) ? (await adapter.list(folder)).files.filter(path => path.endsWith(".aegis")).sort() : [];
+      const selection = await new BackupPickerModal(this.app, files).choose();
+      if (!selection) return;
+      const raw = typeof selection === "string" ? await adapter.read(selection) : await selection.text();
+      const backup = JSON.parse(raw);
+      if (backup?.v !== 1 || !backup.envelope) throw new Error("Unsupported backup format.");
+      const content = await decryptText(backup.envelope, password);
+      this.requireSession(generation);
+      const name = "Aegis restored " + jobId().replace(/^v2native_/, "") + ".md";
+      const restored = await this.app.vault.create(name, content);
+      new Notice(`Aegis: backup restored to ${restored.path}.`);
+      await this.app.workspace.getLeaf(true).openFile(restored);
+    } catch (error) { notifyFailure(error); }
+  }
 
   private async exportEncryptedBackup(file = this.currentFile()): Promise<void> {
 const diagnosticEnd18 = diagnostics?.start?.("main.exportEncryptedBackup") ?? (() => {});
@@ -422,36 +533,42 @@ try {
     const record = this.undoRecord;
     if (!record?.entries.length) { new Notice("Aegis: no changes are available to restore in this session."); return; }
     if (this.settings.reviewBeforeApply && !(await new ConfirmModal(this.app, "Roll back last Aegis operation", `Restore ${record.entries.length} original note(s)? Aegis will refuse if any file changed since the operation.`, "Roll back").waitForResult())) return;
+    const ensureCurrent = () => {
+      if (this.undoRecord !== record) throw new Error("This rollback is no longer available.");
+    };
     let restored = 0;
     const remaining: UndoEntry[] = [];
     for (const entry of record.entries) {
+      if (this.undoRecord !== record) break;
       const file = this.app.vault.getAbstractFileByPath(entry.path);
       if (!(file instanceof TFile)) { remaining.push(entry); continue; }
-      try { await this.atomicChange(file, entry.resulting, entry.original, false); restored++; } catch (caughtError30) {
+      try { await this.atomicChange(file, entry.resulting, entry.original, false, ensureCurrent); restored++; } catch (caughtError30) {
 diagnostics.failure("main.caught_31", caughtError30); remaining.push(entry); new Notice(`Aegis: rollback refused for ${entry.path} because it changed.`); }
     }
-    this.undoRecord = remaining.length ? { ...record, entries: remaining } : undefined;
+    if (this.undoRecord === record) this.undoRecord = remaining.length ? { ...record, entries: remaining } : undefined;
     new Notice(`Aegis: rolled back ${restored} note(s)${remaining.length ? `; ${remaining.length} still available to retry` : ""}.`);
 
 } catch (diagnosticError19) { diagnostics?.failure?.("main.rollbackLastOperation", diagnosticError19); throw diagnosticError19; } finally { diagnosticEnd19(); }
 }
 
-  private async atomicChange(file: TFile, expected: string, next: string, recordUndo = true): Promise<void> {
+  private async atomicChange(file: TFile, expected: string, next: string, recordUndo = true, ensureCurrent?: () => void): Promise<void> {
 const diagnosticEnd20 = diagnostics?.start?.("main.atomicChange") ?? (() => {});
 try {
 
+    const generation = this.sessionGeneration;
     const current = await this.app.vault.read(file);
     assertNoConflict(expected, current);
     const tempPath = temporaryPath(file.path);
     try {
+      ensureCurrent?.();
       await this.app.vault.adapter.write(tempPath, next);
       const staged = await this.app.vault.adapter.read(tempPath);
       if (staged !== next) throw new Error("Staged file verification failed.");
-      await this.app.vault.process(file,latest=>{assertNoConflict(expected,latest);return staged;});
+      await this.app.vault.process(file,latest=>{ensureCurrent?.();assertNoConflict(expected,latest);return staged;});
       await this.app.vault.adapter.remove(tempPath);
       const committed = await this.app.vault.read(file);
       if (committed !== next) throw new Error("Committed file verification failed.");
-      if (recordUndo) this.undoRecord = { createdAt: Date.now(), entries: [{ path: file.path, original: expected, resulting: next }] };
+      if (recordUndo && generation === this.sessionGeneration) this.undoRecord = { createdAt: Date.now(), entries: [{ path: file.path, original: expected, resulting: next }] };
     } catch (error) {
 diagnostics.failure("main.caught_32", error);
       if (await this.app.vault.adapter.exists(tempPath)) await this.app.vault.adapter.remove(tempPath).catch((rejectedError3) => { diagnostics.failure("main.rejected_4", rejectedError3); return (undefined); });
@@ -461,13 +578,14 @@ diagnostics.failure("main.caught_32", error);
 } catch (diagnosticError20) { diagnostics?.failure?.("main.atomicChange", diagnosticError20); throw diagnosticError20; } finally { diagnosticEnd20(); }
 }
 
-  private async applyProtectionChange(file: TFile, original: string, next: string, reservation: UseReservation, successNotice: string, recordUndo = true): Promise<boolean> {
+  private async applyProtectionChange(file: TFile, original: string, next: string, reservation: UseReservation, successNotice: string, recordUndo = true, ensureCurrent?: () => void): Promise<boolean> {
 const diagnosticEnd21 = diagnostics?.start?.("main.applyProtectionChange") ?? (() => {});
 try {
 
     try {
-      if(reservation.markWriting && !await reservation.markWriting([{path:file.path,before:await digest(original),after:await digest(next)}]))return true;
-      await this.atomicChange(file, original, next, recordUndo);
+      ensureCurrent?.();
+      if (reservation.markWriting && !await reservation.markWriting([{ path: file.path, before: await digest(original), after: await digest(next) }])) return false;
+      await this.atomicChange(file, original, next, recordUndo, ensureCurrent);
       const result: ProtectionCommitResult = await reservation.commit();
       if (result.kind === "insufficient") {
         try {
